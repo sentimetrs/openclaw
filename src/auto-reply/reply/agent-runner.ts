@@ -53,6 +53,8 @@ export async function runReplyAgent(params: {
   shouldFollowup: boolean;
   isActive: boolean;
   isStreaming: boolean;
+  /** The sessionId of the currently active run (may differ from followupRun.run.sessionId if session was reset). */
+  activeSessionId: string;
   opts?: GetReplyOptions;
   typing: TypingController;
   sessionEntry?: SessionEntry;
@@ -84,6 +86,7 @@ export async function runReplyAgent(params: {
     shouldFollowup,
     isActive,
     isStreaming,
+    activeSessionId,
     opts,
     typing,
     sessionEntry,
@@ -160,7 +163,7 @@ export async function runReplyAgent(params: {
       : null;
 
   if (shouldSteer && isStreaming) {
-    const steered = queueEmbeddedPiMessage(followupRun.run.sessionId, followupRun.prompt);
+    const steered = queueEmbeddedPiMessage(activeSessionId, followupRun.prompt);
     if (steered && !shouldFollowup) {
       if (activeSessionEntry && activeSessionStore && sessionKey) {
         const updatedAt = Date.now();
