@@ -33,7 +33,7 @@ export function createSlackActions(providerId: string): ChannelMessageActionAdap
         return false;
       };
 
-      const actions = new Set<ChannelMessageActionName>(["send"]);
+      const actions = new Set<ChannelMessageActionName>(["send", "sendAttachment"]);
       if (isActionEnabled("reactions")) {
         actions.add("react");
         actions.add("reactions");
@@ -91,6 +91,29 @@ export function createSlackActions(providerId: string): ChannelMessageActionAdap
             action: "sendMessage",
             to,
             content,
+            mediaUrl: mediaUrl ?? undefined,
+            accountId: accountId ?? undefined,
+            threadTs: threadId ?? replyTo ?? undefined,
+          },
+          cfg,
+          toolContext,
+        );
+      }
+
+      if (action === "sendAttachment") {
+        const to = readStringParam(params, "to", { required: true });
+        const caption =
+          readStringParam(params, "caption", { allowEmpty: true }) ??
+          readStringParam(params, "message", { allowEmpty: true }) ??
+          "";
+        const mediaUrl = readStringParam(params, "media", { trim: false });
+        const threadId = readStringParam(params, "threadId");
+        const replyTo = readStringParam(params, "replyTo");
+        return await handleSlackAction(
+          {
+            action: "sendMessage",
+            to,
+            content: caption,
             mediaUrl: mediaUrl ?? undefined,
             accountId: accountId ?? undefined,
             threadTs: threadId ?? replyTo ?? undefined,
