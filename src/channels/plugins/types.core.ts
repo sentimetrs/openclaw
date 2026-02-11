@@ -247,6 +247,8 @@ export type ChannelThreadingToolContext = {
   currentChannelId?: string;
   currentChannelProvider?: ChannelId;
   currentThreadTs?: string;
+  /** User ID of the DM counterpart for auto-threading in direct messages. */
+  currentDmUserId?: string;
   replyToMode?: "off" | "first" | "all";
   hasRepliedRef?: { value: boolean };
   /**

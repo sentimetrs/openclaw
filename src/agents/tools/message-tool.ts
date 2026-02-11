@@ -296,6 +296,7 @@ type MessageToolOptions = {
   agentSessionKey?: string;
   config?: OpenClawConfig;
   currentChannelId?: string;
+  currentDmUserId?: string;
   currentChannelProvider?: string;
   currentThreadTs?: string;
   replyToMode?: "off" | "first" | "all";
@@ -452,12 +453,14 @@ export function createMessageTool(options?: MessageToolOptions): AnyAgentTool {
 
       const toolContext =
         options?.currentChannelId ||
+        options?.currentDmUserId ||
         options?.currentChannelProvider ||
         options?.currentThreadTs ||
         options?.replyToMode ||
         options?.hasRepliedRef
           ? {
               currentChannelId: options?.currentChannelId,
+              currentDmUserId: options?.currentDmUserId,
               currentChannelProvider: options?.currentChannelProvider,
               currentThreadTs: options?.currentThreadTs,
               replyToMode: options?.replyToMode,

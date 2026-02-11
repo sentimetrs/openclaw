@@ -421,6 +421,107 @@ describe("handleSlackAction", () => {
     expect(opts?.token).toBeUndefined();
   });
 
+  it("auto-injects threadTs for user: target in DM when currentDmUserId matches", async () => {
+    const cfg = { channels: { slack: { botToken: "tok" } } } as OpenClawConfig;
+    sendSlackMessage.mockClear();
+    await handleSlackAction(
+      {
+        action: "sendMessage",
+        to: "user:U0AB47068K1",
+        content: "DM thread reply",
+      },
+      cfg,
+      {
+        currentDmUserId: "U0AB47068K1",
+        currentThreadTs: "1111111111.111111",
+        replyToMode: "all",
+      },
+    );
+    expect(sendSlackMessage).toHaveBeenCalledWith("user:U0AB47068K1", "DM thread reply", {
+      mediaUrl: undefined,
+      threadTs: "1111111111.111111",
+    });
+  });
+
+  it("does not auto-inject threadTs for user: target when currentDmUserId differs", async () => {
+    const cfg = { channels: { slack: { botToken: "tok" } } } as OpenClawConfig;
+    sendSlackMessage.mockClear();
+    await handleSlackAction(
+      {
+        action: "sendMessage",
+        to: "user:UDIFFERENT",
+        content: "Different user",
+      },
+      cfg,
+      {
+        currentDmUserId: "U0AB47068K1",
+        currentThreadTs: "1111111111.111111",
+        replyToMode: "all",
+      },
+    );
+    expect(sendSlackMessage).toHaveBeenCalledWith("user:UDIFFERENT", "Different user", {
+      mediaUrl: undefined,
+      threadTs: undefined,
+    });
+  });
+
+  it("does not auto-inject threadTs for user: target without currentDmUserId", async () => {
+    const cfg = { channels: { slack: { botToken: "tok" } } } as OpenClawConfig;
+    sendSlackMessage.mockClear();
+    await handleSlackAction(
+      {
+        action: "sendMessage",
+        to: "user:U0AB47068K1",
+        content: "No DM context",
+      },
+      cfg,
+      {
+        currentChannelId: "C123",
+        currentThreadTs: "1111111111.111111",
+        replyToMode: "all",
+      },
+    );
+    expect(sendSlackMessage).toHaveBeenCalledWith("user:U0AB47068K1", "No DM context", {
+      mediaUrl: undefined,
+      threadTs: undefined,
+    });
+  });
+
+  it("replyToMode=first works for DM user: targets", async () => {
+    const cfg = { channels: { slack: { botToken: "tok" } } } as OpenClawConfig;
+    sendSlackMessage.mockClear();
+    const hasRepliedRef = { value: false };
+    const context = {
+      currentDmUserId: "U0AB47068K1",
+      currentThreadTs: "1111111111.111111",
+      replyToMode: "first" as const,
+      hasRepliedRef,
+    };
+
+    // First message should be threaded
+    await handleSlackAction(
+      { action: "sendMessage", to: "user:U0AB47068K1", content: "First DM" },
+      cfg,
+      context,
+    );
+    expect(sendSlackMessage).toHaveBeenLastCalledWith("user:U0AB47068K1", "First DM", {
+      mediaUrl: undefined,
+      threadTs: "1111111111.111111",
+    });
+    expect(hasRepliedRef.value).toBe(true);
+
+    // Second message should NOT be threaded
+    await handleSlackAction(
+      { action: "sendMessage", to: "user:U0AB47068K1", content: "Second DM" },
+      cfg,
+      context,
+    );
+    expect(sendSlackMessage).toHaveBeenLastCalledWith("user:U0AB47068K1", "Second DM", {
+      mediaUrl: undefined,
+      threadTs: undefined,
+    });
+  });
+
   it("allows user token writes when bot token is missing", async () => {
     const cfg = {
       channels: {

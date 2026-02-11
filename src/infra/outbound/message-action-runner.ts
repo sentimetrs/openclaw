@@ -226,7 +226,10 @@ function resolveSlackAutoThreadId(params: {
   toolContext?: ChannelThreadingToolContext;
 }): string | undefined {
   const context = params.toolContext;
-  if (!context?.currentThreadTs || !context.currentChannelId) {
+  if (!context?.currentThreadTs) {
+    return undefined;
+  }
+  if (!context.currentChannelId && !context.currentDmUserId) {
     return undefined;
   }
   // Only mirror auto-threading when Slack would reply in the active thread for this channel.
@@ -234,10 +237,20 @@ function resolveSlackAutoThreadId(params: {
     return undefined;
   }
   const parsedTarget = parseSlackTarget(params.to, { defaultKind: "channel" });
-  if (!parsedTarget || parsedTarget.kind !== "channel") {
+  if (!parsedTarget) {
     return undefined;
   }
-  if (parsedTarget.id.toLowerCase() !== context.currentChannelId.toLowerCase()) {
+  // Match target against current conversation
+  if (parsedTarget.kind === "channel") {
+    if (parsedTarget.id.toLowerCase() !== context.currentChannelId?.toLowerCase()) {
+      return undefined;
+    }
+  } else if (parsedTarget.kind === "user") {
+    // DM thread: match user target against the DM counterpart
+    if (parsedTarget.id.toLowerCase() !== context.currentDmUserId?.toLowerCase()) {
+      return undefined;
+    }
+  } else {
     return undefined;
   }
   if (context.replyToMode === "first" && context.hasRepliedRef?.value) {

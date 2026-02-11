@@ -108,4 +108,33 @@ describe("buildSlackThreadingToolContext", () => {
     });
     expect(result.replyToMode).toBe("off");
   });
+
+  it("sets currentDmUserId from user: target in DMs", () => {
+    const result = buildSlackThreadingToolContext({
+      cfg: emptyCfg,
+      accountId: null,
+      context: { ChatType: "direct", To: "user:U0AB47068K1" },
+    });
+    expect(result.currentDmUserId).toBe("U0AB47068K1");
+    expect(result.currentChannelId).toBeUndefined();
+  });
+
+  it("sets currentChannelId from channel: target in channels", () => {
+    const result = buildSlackThreadingToolContext({
+      cfg: emptyCfg,
+      accountId: null,
+      context: { ChatType: "channel", To: "channel:C123" },
+    });
+    expect(result.currentChannelId).toBe("C123");
+    expect(result.currentDmUserId).toBeUndefined();
+  });
+
+  it("does not set currentDmUserId for channel targets", () => {
+    const result = buildSlackThreadingToolContext({
+      cfg: emptyCfg,
+      accountId: null,
+      context: { ChatType: "channel", To: "channel:C123" },
+    });
+    expect(result.currentDmUserId).toBeUndefined();
+  });
 });

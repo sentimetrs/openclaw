@@ -28,6 +28,8 @@ const pinActions = new Set(["pinMessage", "unpinMessage", "listPins"]);
 export type SlackActionContext = {
   /** Current channel ID for auto-threading. */
   currentChannelId?: string;
+  /** User ID of the DM counterpart for auto-threading in direct messages. */
+  currentDmUserId?: string;
   /** Current thread timestamp for auto-threading. */
   currentThreadTs?: string;
   /** Reply-to mode for auto-threading. */
@@ -52,18 +54,29 @@ function resolveThreadTsFromContext(
     return explicitThreadTs;
   }
   // No context or missing required fields
-  if (!context?.currentThreadTs || !context?.currentChannelId) {
+  if (!context?.currentThreadTs) {
+    return undefined;
+  }
+  if (!context.currentChannelId && !context.currentDmUserId) {
     return undefined;
   }
 
   const parsedTarget = parseSlackTarget(targetChannel, { defaultKind: "channel" });
-  if (!parsedTarget || parsedTarget.kind !== "channel") {
+  if (!parsedTarget) {
     return undefined;
   }
-  const normalizedTarget = parsedTarget.id;
 
-  // Different channel - don't inject
-  if (normalizedTarget !== context.currentChannelId) {
+  // Match target against current conversation
+  if (parsedTarget.kind === "channel") {
+    if (parsedTarget.id !== context.currentChannelId) {
+      return undefined;
+    }
+  } else if (parsedTarget.kind === "user") {
+    // DM thread: match user target against the DM counterpart
+    if (parsedTarget.id !== context.currentDmUserId) {
+      return undefined;
+    }
+  } else {
     return undefined;
   }
 

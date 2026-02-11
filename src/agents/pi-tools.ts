@@ -138,6 +138,8 @@ export function createOpenClawCodingTools(options?: {
   modelAuthMode?: ModelAuthMode;
   /** Current channel ID for auto-threading (Slack). */
   currentChannelId?: string;
+  /** User ID of the DM counterpart for auto-threading in direct messages. */
+  currentDmUserId?: string;
   /** Current thread timestamp for auto-threading (Slack). */
   currentThreadTs?: string;
   /** Group id for channel-level tool policy resolution. */
@@ -351,6 +353,7 @@ export function createOpenClawCodingTools(options?: {
         subagentPolicy,
       ]),
       currentChannelId: options?.currentChannelId,
+      currentDmUserId: options?.currentDmUserId,
       currentThreadTs: options?.currentThreadTs,
       replyToMode: options?.replyToMode,
       hasRepliedRef: options?.hasRepliedRef,
