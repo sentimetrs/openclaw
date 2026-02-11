@@ -12,6 +12,7 @@ import {
   abortEmbeddedPiRun,
   isEmbeddedPiRunActive,
   isEmbeddedPiRunStreaming,
+  resolveActiveSessionId,
   resolveEmbeddedSessionLane,
 } from "../../agents/pi-embedded.js";
 import {
@@ -340,8 +341,19 @@ export async function runPreparedReply(
     logVerbose(`Interrupting ${sessionLaneKey} (cleared ${cleared}, aborted=${aborted})`);
   }
   const queueKey = sessionKey ?? sessionIdFinal;
-  const isActive = isEmbeddedPiRunActive(sessionIdFinal);
-  const isStreaming = isEmbeddedPiRunStreaming(sessionIdFinal);
+  // Check active run by sessionId first; if not found, fall back to sessionKey lookup.
+  // This handles the case where sessionId changed (session expiry/reset) while a run
+  // is still active for the same logical session (same thread/channel).
+  let activeSessionId: string | undefined;
+  let isActive = isEmbeddedPiRunActive(sessionIdFinal);
+  let isStreaming = isEmbeddedPiRunStreaming(sessionIdFinal);
+  if (!isActive && sessionKey) {
+    activeSessionId = resolveActiveSessionId(sessionKey);
+    if (activeSessionId) {
+      isActive = true;
+      isStreaming = isEmbeddedPiRunStreaming(activeSessionId);
+    }
+  }
   const shouldSteer = resolvedQueue.mode === "steer" || resolvedQueue.mode === "steer-backlog";
   const shouldFollowup =
     resolvedQueue.mode === "followup" ||
@@ -419,6 +431,7 @@ export async function runPreparedReply(
     shouldFollowup,
     isActive,
     isStreaming,
+    activeSessionId: activeSessionId ?? sessionIdFinal,
     opts,
     typing,
     sessionEntry,
