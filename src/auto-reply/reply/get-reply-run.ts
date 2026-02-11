@@ -184,7 +184,7 @@ export async function runPreparedReply(
     : "";
   const groupSystemPrompt = sessionCtx.GroupSystemPrompt?.trim() ?? "";
   const inboundMetaPrompt = buildInboundMetaSystemPrompt(
-    isNewSession
+    isFirstTurnInSession
       ? sessionCtx
       : { ...sessionCtx, ThreadStarterBody: undefined, ThreadHistory: undefined },
   );
@@ -210,7 +210,7 @@ export async function runPreparedReply(
     ((baseBodyTrimmedRaw.length === 0 && rawBodyTrimmed.length > 0) || isBareNewOrReset);
   const baseBodyFinal = isBareSessionReset ? BARE_SESSION_RESET_PROMPT : baseBody;
   const inboundUserContext = buildInboundUserContextPrefix(
-    isNewSession
+    isFirstTurnInSession
       ? sessionCtx
       : { ...sessionCtx, ThreadStarterBody: undefined, ThreadHistory: undefined },
   );
