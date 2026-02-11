@@ -504,7 +504,9 @@ export async function prepareSlackMessage(params: {
   // --- Thread History Loading (unified budget) ---
   // When joining an existing thread for the first time, load thread history
   // to give the agent context about the conversation so far.
-  let threadHistory: Array<{ sender: string; body: string; timestamp?: number }> | undefined;
+  let threadHistory:
+    | Array<{ sender: string; senderId?: string; body: string; timestamp?: number }>
+    | undefined;
 
   if (isThreadReply && threadTs && ctx.historyLimit > 0) {
     const threadSessionUpdatedAt = readSessionUpdatedAt({ storePath, sessionKey });
@@ -523,7 +525,12 @@ export async function prepareSlackMessage(params: {
       if (rawThreadHistory.length > 0) {
         // Resolve sender names for thread messages.
         const userNameCache = new Map<string, string>();
-        const resolvedHistory: Array<{ sender: string; body: string; timestamp?: number }> = [];
+        const resolvedHistory: Array<{
+          sender: string;
+          senderId?: string;
+          body: string;
+          timestamp?: number;
+        }> = [];
         for (const entry of rawThreadHistory) {
           let senderLabel = entry.userId ?? "unknown";
           if (entry.userId) {
@@ -543,6 +550,7 @@ export async function prepareSlackMessage(params: {
           }
           resolvedHistory.push({
             sender: senderLabel,
+            senderId: entry.userId,
             body: entry.text,
             timestamp: entry.ts ? Math.round(Number(entry.ts) * 1000) : undefined,
           });
@@ -578,6 +586,7 @@ export async function prepareSlackMessage(params: {
               }
               channelHistoryEntries.push({
                 sender: chSenderLabel,
+                senderId: entry.userId,
                 body: entry.text,
                 timestamp: entry.ts ? Math.round(Number(entry.ts) * 1000) : undefined,
               });

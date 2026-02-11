@@ -72,6 +72,7 @@ export type MsgContext = {
   /** Thread message history loaded via Slack API for thread context injection. */
   ThreadHistory?: Array<{
     sender: string;
+    senderId?: string;
     body: string;
     timestamp?: number;
   }>;

@@ -56,6 +56,7 @@ export function buildInboundUserContextPrefix(ctx: TemplateContext): string {
 
   const conversationInfo = {
     conversation_label: safeTrim(ctx.ConversationLabel),
+    sender_id: safeTrim(ctx.SenderId),
     group_subject: safeTrim(ctx.GroupSubject),
     group_channel: safeTrim(ctx.GroupChannel),
     group_space: safeTrim(ctx.GroupSpace),
@@ -104,6 +105,7 @@ export function buildInboundUserContextPrefix(ctx: TemplateContext): string {
         JSON.stringify(
           ctx.ThreadHistory.map((entry) => ({
             sender: entry.sender,
+            sender_id: entry.senderId,
             timestamp_ms: entry.timestamp,
             body: entry.body,
           })),
