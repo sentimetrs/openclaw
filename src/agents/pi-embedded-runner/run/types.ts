@@ -36,6 +36,7 @@ export type EmbeddedRunAttemptParams = {
   /** Whether the sender is an owner (required for owner-only tools). */
   senderIsOwner?: boolean;
   currentChannelId?: string;
+  currentDmUserId?: string;
   currentThreadTs?: string;
   replyToMode?: "off" | "first" | "all";
   hasRepliedRef?: { value: boolean };

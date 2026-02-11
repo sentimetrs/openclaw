@@ -410,6 +410,7 @@ export async function runEmbeddedPiAgent(
             spawnedBy: params.spawnedBy,
             senderIsOwner: params.senderIsOwner,
             currentChannelId: params.currentChannelId,
+            currentDmUserId: params.currentDmUserId,
             currentThreadTs: params.currentThreadTs,
             replyToMode: params.replyToMode,
             hasRepliedRef: params.hasRepliedRef,
