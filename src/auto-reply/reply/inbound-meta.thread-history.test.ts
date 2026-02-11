@@ -142,6 +142,39 @@ describe("buildInboundUserContextPrefix with ThreadHistory", () => {
     expect(parsed[0].body).toBe("Test");
   });
 
+  it("includes sender_id in thread history entries when provided", () => {
+    const ctx: TemplateContext = {
+      ...baseCtx(),
+      ThreadHistory: [
+        { sender: "Alice", senderId: "U0AB47068K1", body: "Hello", timestamp: 1000 },
+        { sender: "Bob", body: "No ID here", timestamp: 2000 },
+      ],
+    };
+
+    const result = buildInboundUserContextPrefix(ctx);
+    const jsonMatch = result.match(/Thread history[\s\S]*?```json\n([\s\S]*?)\n```/);
+    const parsed = JSON.parse(jsonMatch?.[1] ?? "[]");
+
+    expect(parsed).toHaveLength(2);
+    expect(parsed[0].sender_id).toBe("U0AB47068K1");
+    expect(parsed[1].sender_id).toBeUndefined();
+  });
+
+  it("includes sender_id in conversation info when SenderId is set", () => {
+    const ctx: TemplateContext = {
+      ...baseCtx(),
+      ConversationLabel: "Anatoliy",
+      SenderId: "U0AB47068K1",
+    };
+
+    const result = buildInboundUserContextPrefix(ctx);
+    const jsonMatch = result.match(/Conversation info[\s\S]*?```json\n([\s\S]*?)\n```/);
+    const parsed = JSON.parse(jsonMatch?.[1] ?? "{}");
+
+    expect(parsed.sender_id).toBe("U0AB47068K1");
+    expect(parsed.conversation_label).toBe("Anatoliy");
+  });
+
   it("renders empty string when neither ThreadHistory nor ThreadStarterBody is set", () => {
     const ctx: TemplateContext = baseCtx();
 
