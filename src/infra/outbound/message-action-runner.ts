@@ -18,6 +18,7 @@ import {
 } from "../../agents/tools/common.js";
 import { parseReplyDirectives } from "../../auto-reply/reply/reply-directives.js";
 import { dispatchChannelMessageAction } from "../../channels/plugins/message-actions.js";
+import { logVerbose } from "../../globals.js";
 import { extensionForMime } from "../../media/mime.js";
 import { parseSlackTarget } from "../../slack/targets.js";
 import { parseTelegramTarget } from "../../telegram/targets.js";
@@ -836,6 +837,9 @@ async function handleSendAction(ctx: ResolvedActionContext): Promise<MessageActi
   if (resolvedThreadId && !params.threadId) {
     params.threadId = resolvedThreadId;
   }
+  logVerbose(
+    `slack auto-thread: to=${to} resolved=${resolvedThreadId ?? "NONE"} context.threadTs=${input.toolContext?.currentThreadTs ?? "NONE"} context.dmUser=${input.toolContext?.currentDmUserId ?? "NONE"} replyToMode=${input.toolContext?.replyToMode ?? "NONE"}`,
+  );
   const outboundRoute =
     agentId && !dryRun
       ? await resolveOutboundSessionRoute({
@@ -933,6 +937,22 @@ async function handlePollAction(ctx: ResolvedActionContext): Promise<MessageActi
     preferEmbeds: true,
   });
 
+  // Auto-threading for poll actions (mirrors handleSendAction logic)
+  const replyToId = readStringParam(params, "replyTo");
+  const threadId = readStringParam(params, "threadId");
+  const slackAutoThreadId =
+    channel === "slack" && !replyToId && !threadId
+      ? resolveSlackAutoThreadId({ to, toolContext: input.toolContext })
+      : undefined;
+  const telegramAutoThreadId =
+    channel === "telegram" && !threadId
+      ? resolveTelegramAutoThreadId({ to, toolContext: input.toolContext })
+      : undefined;
+  const resolvedThreadId = threadId ?? slackAutoThreadId ?? telegramAutoThreadId;
+  if (resolvedThreadId && !params.threadId) {
+    params.threadId = resolvedThreadId;
+  }
+
   const poll = await executePollAction({
     ctx: {
       cfg,
@@ -976,6 +996,28 @@ async function handlePluginAction(ctx: ResolvedActionContext): Promise<MessageAc
       payload: { ok: true, dryRun: true, channel, action },
       dryRun: true,
     };
+  }
+
+  // Auto-threading for plugin actions (mirrors handleSendAction logic)
+  const replyToId = readStringParam(params, "replyTo");
+  const threadId = readStringParam(params, "threadId");
+  const slackAutoThreadId =
+    channel === "slack" && !replyToId && !threadId
+      ? resolveSlackAutoThreadId({
+          to: readStringParam(params, "to") ?? "",
+          toolContext: input.toolContext,
+        })
+      : undefined;
+  const telegramAutoThreadId =
+    channel === "telegram" && !threadId
+      ? resolveTelegramAutoThreadId({
+          to: readStringParam(params, "to") ?? "",
+          toolContext: input.toolContext,
+        })
+      : undefined;
+  const resolvedThreadId = threadId ?? slackAutoThreadId ?? telegramAutoThreadId;
+  if (resolvedThreadId && !params.threadId) {
+    params.threadId = resolvedThreadId;
   }
 
   const handled = await dispatchChannelMessageAction({

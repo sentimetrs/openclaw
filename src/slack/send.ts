@@ -100,6 +100,9 @@ async function uploadSlackFile(params: {
     contentType: _contentType,
     fileName,
   } = await loadWebMedia(params.mediaUrl, params.maxBytes);
+  logVerbose(
+    `slack upload: channel=${params.channelId} threadTs=${params.threadTs ?? "NONE"} file=${params.mediaUrl?.slice(0, 60)}`,
+  );
   const basePayload = {
     channel_id: params.channelId,
     file: buffer,
