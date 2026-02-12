@@ -271,7 +271,7 @@ export function createSlackMonitorContext(params: {
       channel_id: p.channelId,
       thread_ts: p.threadTs,
       status: p.status,
-      ...(p.status ? { loading_messages: [p.status] } : {}),
+      ...(p.status === "typing..." ? { loading_messages: [p.status] } : {}),
     };
     const client = params.app.client as unknown as {
       assistant?: {

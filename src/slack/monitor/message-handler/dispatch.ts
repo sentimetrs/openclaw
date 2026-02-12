@@ -51,8 +51,6 @@ export async function dispatchPreparedSlackMessage(prepared: PreparedSlackMessag
   // 4. ""                 – cleanup on idle
   //
   // No periodic typing loop — Slack assistant.threads.setStatus is persistent.
-  let lastWorkingStatusAt = 0;
-  const WORKING_STATUS_DEBOUNCE_MS = 3000;
   const STATUS_PREVIEW_MAX_LEN = 80;
 
   if (statusThreadTs) {
@@ -169,11 +167,6 @@ export async function dispatchPreparedSlackMessage(prepared: PreparedSlackMessag
       onReasoningStream: undefined,
       onPartialReply: statusThreadTs
         ? async (payload) => {
-            const now = Date.now();
-            if (now - lastWorkingStatusAt < WORKING_STATUS_DEBOUNCE_MS) {
-              return;
-            }
-            lastWorkingStatusAt = now;
             didSetStatus = true;
             const text = payload.text?.replace(/\n/g, " ").trim();
             const status =
