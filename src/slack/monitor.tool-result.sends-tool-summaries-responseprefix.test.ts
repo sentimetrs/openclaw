@@ -351,7 +351,7 @@ describe("monitorSlackProvider tool results", () => {
     await run;
 
     const setStatus = client.assistant?.threads?.setStatus;
-    // 3 calls: immediate thinking on dispatch + ensureStart on reply + clear on idle
+    // 3 calls: thinking on dispatch → typing before delivery → clear on idle
     expect(setStatus).toHaveBeenCalledTimes(3);
     expect(setStatus).toHaveBeenNthCalledWith(1, {
       token: "bot-token",
@@ -359,6 +359,13 @@ describe("monitorSlackProvider tool results", () => {
       thread_ts: "123",
       status: "thinking...",
       loading_messages: ["thinking..."],
+    });
+    expect(setStatus).toHaveBeenNthCalledWith(2, {
+      token: "bot-token",
+      channel_id: "C1",
+      thread_ts: "123",
+      status: "typing...",
+      loading_messages: ["typing..."],
     });
     expect(setStatus).toHaveBeenNthCalledWith(3, {
       token: "bot-token",

@@ -44,25 +44,16 @@ export async function dispatchPreparedSlackMessage(prepared: PreparedSlackMessag
   const incomingThreadTs = message.thread_ts;
   let didSetStatus = false;
 
-  // Dynamic Slack assistant status with four phases:
-  // 1. "thinking…"        – set immediately (waiting for API response)
-  // 2. "reasoning…"       – extended-thinking tokens arriving (via onReasoningStream)
-  // 3. truncated text / "calling N tools…" – agent producing output (via typing loop + callbacks)
-  // 4. cleared            – response delivered (via typingCallbacks.stop)
+  // Explicit phase-based Slack assistant status:
+  // 1. "thinking..."      – set immediately at dispatch
+  // 2. "working..." / text / "working: toolName…" – LLM output (onPartialReply / onToolUse)
+  // 3. "typing..."        – before deliverReplies
+  // 4. ""                 – cleanup on idle
   //
-  // Shared mutable state drives the dynamic status shown by the periodic typing loop.
-  let reasoningStatusShown = false;
-  let latestPreviewText = "";
-  const activeTools: string[] = [];
+  // No periodic typing loop — Slack assistant.threads.setStatus is persistent.
+  let lastWorkingStatusAt = 0;
+  const WORKING_STATUS_DEBOUNCE_MS = 3000;
   const STATUS_PREVIEW_MAX_LEN = 80;
-
-  const truncatePreview = (text: string): string => {
-    const oneLine = text.replace(/\n/g, " ").trim();
-    if (oneLine.length <= STATUS_PREVIEW_MAX_LEN) {
-      return oneLine;
-    }
-    return oneLine.slice(0, STATUS_PREVIEW_MAX_LEN) + "…";
-  };
 
   if (statusThreadTs) {
     didSetStatus = true;
@@ -88,22 +79,9 @@ export async function dispatchPreparedSlackMessage(prepared: PreparedSlackMessag
   const typingTarget = statusThreadTs ? `${message.channel}/${statusThreadTs}` : message.channel;
   const typingCallbacks = createTypingCallbacks({
     start: async () => {
+      // No-op: Slack status is managed via explicit phase callbacks.
+      // Periodic typing loop refresh is unnecessary — assistant.threads.setStatus is persistent.
       didSetStatus = true;
-      // Build dynamic status from shared state — called periodically by typing loop.
-      let status: string;
-      if (latestPreviewText) {
-        status = truncatePreview(latestPreviewText);
-      } else if (activeTools.length > 0) {
-        const names = [...new Set(activeTools)].join(", ");
-        status = `calling ${names}…`;
-      } else {
-        status = "working…";
-      }
-      await ctx.setSlackThreadStatus({
-        channelId: message.channel,
-        threadTs: statusThreadTs,
-        status,
-      });
     },
     stop: async () => {
       if (!didSetStatus) {
@@ -147,6 +125,14 @@ export async function dispatchPreparedSlackMessage(prepared: PreparedSlackMessag
     ...prefixOptions,
     humanDelay: resolveHumanDelayConfig(cfg, route.agentId),
     deliver: async (payload) => {
+      if (statusThreadTs) {
+        didSetStatus = true;
+        await ctx.setSlackThreadStatus({
+          channelId: message.channel,
+          threadTs: statusThreadTs,
+          status: "typing...",
+        });
+      }
       const replyThreadTs = replyPlan.nextThreadTs();
       await deliverReplies({
         replies: [payload],
@@ -180,37 +166,47 @@ export async function dispatchPreparedSlackMessage(prepared: PreparedSlackMessag
           ? !account.config.blockStreaming
           : undefined,
       onModelSelected,
-      onReasoningStream: statusThreadTs
-        ? async () => {
-            if (!reasoningStatusShown) {
-              reasoningStatusShown = true;
-              didSetStatus = true;
-              ctx
-                .setSlackThreadStatus({
-                  channelId: message.channel,
-                  threadTs: statusThreadTs,
-                  status: "reasoning…",
-                })
-                .catch(() => {});
-            }
-          }
-        : undefined,
+      onReasoningStream: undefined,
       onPartialReply: statusThreadTs
         ? async (payload) => {
-            if (payload.text) {
-              latestPreviewText = payload.text;
+            const now = Date.now();
+            if (now - lastWorkingStatusAt < WORKING_STATUS_DEBOUNCE_MS) {
+              return;
             }
+            lastWorkingStatusAt = now;
+            didSetStatus = true;
+            const text = payload.text?.replace(/\n/g, " ").trim();
+            const status =
+              text && text.length > 0
+                ? text.length <= STATUS_PREVIEW_MAX_LEN
+                  ? text
+                  : text.slice(0, STATUS_PREVIEW_MAX_LEN) + "…"
+                : "working…";
+            ctx
+              .setSlackThreadStatus({
+                channelId: message.channel,
+                threadTs: statusThreadTs,
+                status,
+              })
+              .catch(() => {});
           }
         : undefined,
       onToolUse: statusThreadTs
         ? (toolName) => {
-            activeTools.push(toolName);
+            didSetStatus = true;
+            const status = toolName ? `working: ${toolName}…` : "working…";
+            ctx
+              .setSlackThreadStatus({
+                channelId: message.channel,
+                threadTs: statusThreadTs,
+                status,
+              })
+              .catch(() => {});
           }
         : undefined,
       onDrainPhaseChange: statusThreadTs
         ? (phase) => {
-            const status =
-              phase === "debounce-start" ? "waiting for next messages..." : "thinking...";
+            const status = phase === "debounce-start" ? "read messages..." : "thinking...";
             didSetStatus = true;
             ctx
               .setSlackThreadStatus({
