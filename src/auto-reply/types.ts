@@ -41,6 +41,8 @@ export type GetReplyOptions = {
   skillFilter?: string[];
   /** Mutable ref to track if a reply was sent (for Slack "first" threading mode). */
   hasRepliedRef?: { value: boolean };
+  /** Called during followup queue drain to report phase transitions (e.g. debounce wait → processing). */
+  onDrainPhaseChange?: (phase: "debounce-start" | "processing-start") => void;
 };
 
 export type ReplyPayload = {

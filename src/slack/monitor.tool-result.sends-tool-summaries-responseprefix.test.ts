@@ -351,13 +351,13 @@ describe("monitorSlackProvider tool results", () => {
     await run;
 
     const setStatus = client.assistant?.threads?.setStatus;
-    // 3 calls: immediate typing on dispatch + ensureStart on reply + clear on idle
+    // 3 calls: immediate thinking on dispatch + ensureStart on reply + clear on idle
     expect(setStatus).toHaveBeenCalledTimes(3);
     expect(setStatus).toHaveBeenNthCalledWith(1, {
       token: "bot-token",
       channel_id: "C1",
       thread_ts: "123",
-      status: "is typing...",
+      status: "thinking...",
     });
     expect(setStatus).toHaveBeenNthCalledWith(3, {
       token: "bot-token",

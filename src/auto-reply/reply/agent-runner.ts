@@ -229,6 +229,13 @@ export async function runReplyAgent(params: {
     agentCfgContextTokens,
   });
 
+  const drainCallbacks = opts?.onDrainPhaseChange
+    ? {
+        onDebounceStart: () => opts.onDrainPhaseChange!("debounce-start"),
+        onProcessingStart: () => opts.onDrainPhaseChange!("processing-start"),
+      }
+    : undefined;
+
   let responseUsageLine: string | undefined;
   type SessionResetOptions = {
     failureLabel: string;
@@ -335,7 +342,7 @@ export async function runReplyAgent(params: {
     });
 
     if (runOutcome.kind === "final") {
-      return finalizeWithFollowup(runOutcome.payload, queueKey, runFollowupTurn);
+      return finalizeWithFollowup(runOutcome.payload, queueKey, runFollowupTurn, drainCallbacks);
     }
 
     const { runResult, fallbackProvider, fallbackModel, directlySentBlockKeys } = runOutcome;
@@ -402,7 +409,7 @@ export async function runReplyAgent(params: {
     // Otherwise, a late typing trigger (e.g. from a tool callback) can outlive the run and
     // keep the typing indicator stuck.
     if (payloadArray.length === 0) {
-      return finalizeWithFollowup(undefined, queueKey, runFollowupTurn);
+      return finalizeWithFollowup(undefined, queueKey, runFollowupTurn, drainCallbacks);
     }
 
     const payloadResult = buildReplyPayloads({
@@ -425,7 +432,7 @@ export async function runReplyAgent(params: {
     didLogHeartbeatStrip = payloadResult.didLogHeartbeatStrip;
 
     if (replyPayloads.length === 0) {
-      return finalizeWithFollowup(undefined, queueKey, runFollowupTurn);
+      return finalizeWithFollowup(undefined, queueKey, runFollowupTurn, drainCallbacks);
     }
 
     await signalTypingIfNeeded(replyPayloads, typingSignals);
@@ -520,6 +527,7 @@ export async function runReplyAgent(params: {
       finalPayloads.length === 1 ? finalPayloads[0] : finalPayloads,
       queueKey,
       runFollowupTurn,
+      drainCallbacks,
     );
   } finally {
     blockReplyPipeline?.stop();
