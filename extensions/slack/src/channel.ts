@@ -95,6 +95,11 @@ export const slackPlugin: ChannelPlugin<ResolvedSlackAccount> = {
   streaming: {
     blockStreamingCoalesceDefaults: { minChars: 1500, idleMs: 1000 },
   },
+  agentPrompt: {
+    messageToolHints: () => [
+      "- To post a new top-level message directly into a Slack channel (not as a thread reply), set `noThread=true` in the message tool call.",
+    ],
+  },
   reload: { configPrefixes: ["channels.slack"] },
   configSchema: buildChannelConfigSchema(SlackConfigSchema),
   config: {
@@ -305,6 +310,7 @@ export const slackPlugin: ChannelPlugin<ResolvedSlackAccount> = {
         const filename = readStringParam(params, "filename");
         const threadId = readStringParam(params, "threadId");
         const replyTo = readStringParam(params, "replyTo");
+        const noThread = params.noThread === true;
         return await getSlackRuntime().channel.slack.handleSlackAction(
           {
             action: "sendMessage",
@@ -315,6 +321,7 @@ export const slackPlugin: ChannelPlugin<ResolvedSlackAccount> = {
             filename: filename ?? undefined,
             accountId: accountId ?? undefined,
             threadTs: threadId ?? replyTo ?? undefined,
+            noThread,
           },
           cfg,
           toolContext,
@@ -332,6 +339,7 @@ export const slackPlugin: ChannelPlugin<ResolvedSlackAccount> = {
         const filename = readStringParam(params, "filename");
         const threadId = readStringParam(params, "threadId");
         const replyTo = readStringParam(params, "replyTo");
+        const noThread = params.noThread === true;
         return await getSlackRuntime().channel.slack.handleSlackAction(
           {
             action: "sendMessage",
@@ -342,6 +350,7 @@ export const slackPlugin: ChannelPlugin<ResolvedSlackAccount> = {
             filename: filename ?? undefined,
             accountId: accountId ?? undefined,
             threadTs: threadId ?? replyTo ?? undefined,
+            noThread,
           },
           cfg,
           toolContext,

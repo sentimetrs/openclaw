@@ -75,6 +75,12 @@ function buildSendSchema(options: { includeButtons: boolean; includeCards: boole
     filePath: Type.Optional(Type.String()),
     replyTo: Type.Optional(Type.String()),
     threadId: Type.Optional(Type.String()),
+    noThread: Type.Optional(
+      Type.Boolean({
+        description:
+          "When true, post directly to the channel instead of auto-threading. Use this to send a new top-level message to a channel.",
+      }),
+    ),
     asVoice: Type.Optional(Type.Boolean()),
     silent: Type.Optional(Type.Boolean()),
     quoteText: Type.Optional(

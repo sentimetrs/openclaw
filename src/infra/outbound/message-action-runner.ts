@@ -830,9 +830,11 @@ async function handleSendAction(ctx: ResolvedActionContext): Promise<MessageActi
 
   const replyToId = readStringParam(params, "replyTo");
   const threadId = readStringParam(params, "threadId");
+  const noThread = readBooleanParam(params, "noThread") === true;
   // Slack auto-threading can inject threadTs without explicit params; mirror to that session key.
+  // When noThread is true, skip auto-threading so the message lands in the main channel.
   const slackAutoThreadId =
-    channel === "slack" && !replyToId && !threadId
+    channel === "slack" && !replyToId && !threadId && !noThread
       ? resolveSlackAutoThreadId({ to, toolContext: input.toolContext })
       : undefined;
   // Telegram forum topic auto-threading: inject threadId so media/buttons land in the correct topic.
@@ -949,8 +951,9 @@ async function handlePollAction(ctx: ResolvedActionContext): Promise<MessageActi
   // Auto-threading for poll actions (mirrors handleSendAction logic)
   const replyToId = readStringParam(params, "replyTo");
   const threadId = readStringParam(params, "threadId");
+  const noThread = readBooleanParam(params, "noThread") === true;
   const slackAutoThreadId =
-    channel === "slack" && !replyToId && !threadId
+    channel === "slack" && !replyToId && !threadId && !noThread
       ? resolveSlackAutoThreadId({ to, toolContext: input.toolContext })
       : undefined;
   const telegramAutoThreadId =
@@ -1010,8 +1013,9 @@ async function handlePluginAction(ctx: ResolvedActionContext): Promise<MessageAc
   // Auto-threading for plugin actions (mirrors handleSendAction logic)
   const replyToId = readStringParam(params, "replyTo");
   const threadId = readStringParam(params, "threadId");
+  const noThread = readBooleanParam(params, "noThread") === true;
   const slackAutoThreadId =
-    channel === "slack" && !replyToId && !threadId
+    channel === "slack" && !replyToId && !threadId && !noThread
       ? resolveSlackAutoThreadId({
           to: readStringParam(params, "to") ?? "",
           toolContext: input.toolContext,
