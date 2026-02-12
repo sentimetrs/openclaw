@@ -6,6 +6,7 @@ import {
   createInboundDebouncer,
   resolveInboundDebounceMs,
 } from "../../auto-reply/inbound-debounce.js";
+import { resolveSlackThreadTargets } from "../threading.js";
 import { dispatchPreparedSlackMessage } from "./message-handler/dispatch.js";
 import { prepareSlackMessage } from "./message-handler/prepare.js";
 import { createSlackThreadTsResolver } from "./thread-resolution.js";
@@ -51,6 +52,21 @@ export function createSlackMessageHandler(params: {
         return false;
       }
       return !hasControlCommand(text, ctx.cfg);
+    },
+    onDebounceStart: (entry) => {
+      const { statusThreadTs } = resolveSlackThreadTargets({
+        message: entry.message,
+        replyToMode: ctx.replyToMode,
+      });
+      if (statusThreadTs) {
+        ctx
+          .setSlackThreadStatus({
+            channelId: entry.message.channel,
+            threadTs: statusThreadTs,
+            status: "waiting for next messages...",
+          })
+          .catch(() => {});
+      }
     },
     onFlush: async (entries) => {
       const last = entries.at(-1);

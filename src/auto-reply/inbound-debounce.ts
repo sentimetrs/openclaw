@@ -43,6 +43,7 @@ export function createInboundDebouncer<T>(params: {
   buildKey: (item: T) => string | null | undefined;
   shouldDebounce?: (item: T) => boolean;
   onFlush: (items: T[]) => Promise<void>;
+  onDebounceStart?: (item: T) => void;
   onError?: (err: unknown, items: T[]) => void;
 }) {
   const buffers = new Map<string, DebounceBuffer<T>>();
@@ -103,6 +104,7 @@ export function createInboundDebouncer<T>(params: {
 
     const buffer: DebounceBuffer<T> = { items: [item], timeout: null };
     buffers.set(key, buffer);
+    params.onDebounceStart?.(item);
     scheduleFlush(key, buffer);
   };
 
