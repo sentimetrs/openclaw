@@ -29,6 +29,8 @@ export type GetReplyOptions = {
   isHeartbeat?: boolean;
   onPartialReply?: (payload: ReplyPayload) => Promise<void> | void;
   onReasoningStream?: (payload: ReplyPayload) => Promise<void> | void;
+  /** Called when a tool starts executing (tool name from agent event). */
+  onToolUse?: (toolName: string) => void;
   onBlockReply?: (payload: ReplyPayload, context?: BlockReplyContext) => Promise<void> | void;
   onToolResult?: (payload: ReplyPayload) => Promise<void> | void;
   /** Called when the actual model is selected (including after fallback).

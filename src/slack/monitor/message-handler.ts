@@ -50,6 +50,14 @@ export function createSlackMessageHandler(params: {
       if (channelType === "im") {
         return false;
       }
+      // Skip debounce when mention is required but bot wasn't mentioned —
+      // message won't be processed, so no status should be shown
+      if (ctx.defaultRequireMention) {
+        const isMentioned = entry.opts.source === "app_mention" || entry.opts.wasMentioned;
+        if (!isMentioned) {
+          return false;
+        }
+      }
       const text = entry.message.text ?? "";
       if (!text.trim()) {
         return false;
@@ -101,6 +109,21 @@ export function createSlackMessageHandler(params: {
         },
       });
       if (!prepared) {
+        // Clear "waiting for next messages..." set during onDebounceStart
+        // (e.g., message didn't mention the bot → prepareSlackMessage returned null)
+        const { statusThreadTs } = resolveSlackThreadTargets({
+          message: syntheticMessage,
+          replyToMode: ctx.replyToMode,
+        });
+        if (statusThreadTs) {
+          ctx
+            .setSlackThreadStatus({
+              channelId: syntheticMessage.channel,
+              threadTs: statusThreadTs,
+              status: "",
+            })
+            .catch(() => {});
+        }
         return;
       }
       if (entries.length > 1) {
