@@ -33,6 +33,8 @@ type SlackSendOpts = {
   mediaUrl?: string;
   client?: WebClient;
   threadTs?: string;
+  buffer?: string;
+  filename?: string;
 };
 
 export type SlackSendResult = {
@@ -90,18 +92,27 @@ async function resolveChannelId(
 async function uploadSlackFile(params: {
   client: WebClient;
   channelId: string;
-  mediaUrl: string;
+  mediaUrl?: string;
   caption?: string;
   threadTs?: string;
   maxBytes?: number;
+  inlineBuffer?: Buffer;
+  inlineFilename?: string;
 }): Promise<string> {
-  const {
-    buffer,
-    contentType: _contentType,
-    fileName,
-  } = await loadWebMedia(params.mediaUrl, params.maxBytes);
+  let buffer: Buffer;
+  let fileName: string | undefined;
+  if (params.inlineBuffer) {
+    buffer = params.inlineBuffer;
+    fileName = params.inlineFilename ?? "attachment";
+  } else if (params.mediaUrl) {
+    const media = await loadWebMedia(params.mediaUrl, params.maxBytes);
+    buffer = media.buffer;
+    fileName = media.fileName;
+  } else {
+    throw new Error("uploadSlackFile requires mediaUrl or inlineBuffer");
+  }
   logVerbose(
-    `slack upload: channel=${params.channelId} threadTs=${params.threadTs ?? "NONE"} file=${params.mediaUrl?.slice(0, 60)}`,
+    `slack upload: channel=${params.channelId} threadTs=${params.threadTs ?? "NONE"} file=${params.mediaUrl?.slice(0, 60) ?? params.inlineFilename ?? "inline"}`,
   );
   const basePayload = {
     channel_id: params.channelId,
@@ -133,7 +144,7 @@ export async function sendMessageSlack(
   opts: SlackSendOpts = {},
 ): Promise<SlackSendResult> {
   const trimmedMessage = message?.trim() ?? "";
-  if (!trimmedMessage && !opts.mediaUrl) {
+  if (!trimmedMessage && !opts.mediaUrl && !opts.buffer) {
     throw new Error("Slack send requires text or media");
   }
   const cfg = loadConfig();
@@ -174,7 +185,8 @@ export async function sendMessageSlack(
       : undefined;
 
   let lastMessageId = "";
-  if (opts.mediaUrl) {
+  const inlineBuffer = opts.buffer ? Buffer.from(opts.buffer, "base64") : undefined;
+  if (opts.mediaUrl || inlineBuffer) {
     const [firstChunk, ...rest] = chunks;
     lastMessageId = await uploadSlackFile({
       client,
@@ -183,6 +195,8 @@ export async function sendMessageSlack(
       caption: firstChunk,
       threadTs: opts.threadTs,
       maxBytes: mediaMaxBytes,
+      inlineBuffer,
+      inlineFilename: opts.filename,
     });
     for (const chunk of rest) {
       const response = await client.chat.postMessage({

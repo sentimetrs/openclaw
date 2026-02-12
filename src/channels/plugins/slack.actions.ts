@@ -84,6 +84,8 @@ export function createSlackActions(providerId: string): ChannelMessageActionAdap
           allowEmpty: true,
         });
         const mediaUrl = readStringParam(params, "media", { trim: false });
+        const buffer = readStringParam(params, "buffer", { trim: false });
+        const filename = readStringParam(params, "filename");
         const threadId = readStringParam(params, "threadId");
         const replyTo = readStringParam(params, "replyTo");
         return await handleSlackAction(
@@ -92,6 +94,8 @@ export function createSlackActions(providerId: string): ChannelMessageActionAdap
             to,
             content,
             mediaUrl: mediaUrl ?? undefined,
+            buffer: buffer ?? undefined,
+            filename: filename ?? undefined,
             accountId: accountId ?? undefined,
             threadTs: threadId ?? replyTo ?? undefined,
           },
@@ -107,6 +111,8 @@ export function createSlackActions(providerId: string): ChannelMessageActionAdap
           readStringParam(params, "message", { allowEmpty: true }) ??
           "";
         const mediaUrl = readStringParam(params, "media", { trim: false });
+        const buffer = readStringParam(params, "buffer", { trim: false });
+        const filename = readStringParam(params, "filename");
         const threadId = readStringParam(params, "threadId");
         const replyTo = readStringParam(params, "replyTo");
         return await handleSlackAction(
@@ -115,6 +121,8 @@ export function createSlackActions(providerId: string): ChannelMessageActionAdap
             to,
             content: caption,
             mediaUrl: mediaUrl ?? undefined,
+            buffer: buffer ?? undefined,
+            filename: filename ?? undefined,
             accountId: accountId ?? undefined,
             threadTs: threadId ?? replyTo ?? undefined,
           },

@@ -243,7 +243,11 @@ function resolveSlackAutoThreadId(params: {
   }
   // Match target against current conversation
   if (parsedTarget.kind === "channel") {
-    if (parsedTarget.id.toLowerCase() !== context.currentChannelId?.toLowerCase()) {
+    if (parsedTarget.id.toLowerCase() === context.currentChannelId?.toLowerCase()) {
+      // Channel matches — fall through to return threadTs
+    } else if (parsedTarget.id.toLowerCase() === context.currentDmUserId?.toLowerCase()) {
+      // Bare user ID parsed as "channel" due to defaultKind — treat as DM match
+    } else {
       return undefined;
     }
   } else if (parsedTarget.kind === "user") {
@@ -484,7 +488,12 @@ async function hydrateSendAttachmentParams(params: {
   action: ChannelMessageActionName;
   dryRun?: boolean;
 }): Promise<void> {
-  if (params.action !== "sendAttachment") {
+  if (params.action !== "sendAttachment" && params.action !== "send") {
+    return;
+  }
+
+  // For "send" action, only run hydration when an inline buffer is present.
+  if (params.action === "send" && !readStringParam(params.args, "buffer", { trim: false })) {
     return;
   }
 
