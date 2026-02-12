@@ -301,6 +301,8 @@ export const slackPlugin: ChannelPlugin<ResolvedSlackAccount> = {
           allowEmpty: true,
         });
         const mediaUrl = readStringParam(params, "media", { trim: false });
+        const buffer = readStringParam(params, "buffer", { trim: false });
+        const filename = readStringParam(params, "filename");
         const threadId = readStringParam(params, "threadId");
         const replyTo = readStringParam(params, "replyTo");
         return await getSlackRuntime().channel.slack.handleSlackAction(
@@ -309,6 +311,8 @@ export const slackPlugin: ChannelPlugin<ResolvedSlackAccount> = {
             to,
             content,
             mediaUrl: mediaUrl ?? undefined,
+            buffer: buffer ?? undefined,
+            filename: filename ?? undefined,
             accountId: accountId ?? undefined,
             threadTs: threadId ?? replyTo ?? undefined,
           },
@@ -324,6 +328,8 @@ export const slackPlugin: ChannelPlugin<ResolvedSlackAccount> = {
           readStringParam(params, "message", { allowEmpty: true }) ??
           "";
         const mediaUrl = readStringParam(params, "media", { trim: false });
+        const buffer = readStringParam(params, "buffer", { trim: false });
+        const filename = readStringParam(params, "filename");
         const threadId = readStringParam(params, "threadId");
         const replyTo = readStringParam(params, "replyTo");
         return await getSlackRuntime().channel.slack.handleSlackAction(
@@ -332,6 +338,8 @@ export const slackPlugin: ChannelPlugin<ResolvedSlackAccount> = {
             to,
             content: caption,
             mediaUrl: mediaUrl ?? undefined,
+            buffer: buffer ?? undefined,
+            filename: filename ?? undefined,
             accountId: accountId ?? undefined,
             threadTs: threadId ?? replyTo ?? undefined,
           },

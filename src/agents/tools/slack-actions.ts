@@ -68,7 +68,11 @@ function resolveThreadTsFromContext(
 
   // Match target against current conversation
   if (parsedTarget.kind === "channel") {
-    if (parsedTarget.id !== context.currentChannelId) {
+    if (parsedTarget.id === context.currentChannelId) {
+      // Channel matches — fall through to check replyToMode
+    } else if (parsedTarget.id === context.currentDmUserId) {
+      // Bare user ID parsed as "channel" due to defaultKind — treat as DM match
+    } else {
       return undefined;
     }
   } else if (parsedTarget.kind === "user") {
@@ -183,6 +187,8 @@ export async function handleSlackAction(
         const to = readStringParam(params, "to", { required: true });
         const content = readStringParam(params, "content", { required: true });
         const mediaUrl = readStringParam(params, "mediaUrl");
+        const buffer = readStringParam(params, "buffer", { trim: false });
+        const filename = readStringParam(params, "filename");
         const threadTs = resolveThreadTsFromContext(
           readStringParam(params, "threadTs"),
           to,
@@ -192,6 +198,8 @@ export async function handleSlackAction(
           ...writeOpts,
           mediaUrl: mediaUrl ?? undefined,
           threadTs: threadTs ?? undefined,
+          buffer: buffer ?? undefined,
+          filename: filename ?? undefined,
         });
 
         // Keep "first" mode consistent even when the agent explicitly provided
