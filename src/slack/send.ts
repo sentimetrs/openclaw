@@ -71,6 +71,12 @@ function parseRecipient(raw: string): SlackRecipient {
   if (!target) {
     throw new Error("Recipient is required for Slack sends");
   }
+  // Bare user IDs (U…) are misclassified as "channel" by parseSlackTarget's
+  // default.  Reclassify so resolveChannelId opens a DM conversation and
+  // returns the real D-prefixed channel ID required by files.uploadV2.
+  if (target.kind === "channel" && /^U[A-Z0-9]+$/i.test(target.id)) {
+    return { kind: "user", id: target.id };
+  }
   return { kind: target.kind, id: target.id };
 }
 
