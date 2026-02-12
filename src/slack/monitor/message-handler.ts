@@ -1,12 +1,12 @@
 import type { ResolvedSlackAccount } from "../accounts.js";
 import type { SlackMessageEvent } from "../types.js";
-import type { SlackMonitorContext } from "./context.js";
 import { hasControlCommand } from "../../auto-reply/command-detection.js";
 import {
   createInboundDebouncer,
   resolveInboundDebounceMs,
 } from "../../auto-reply/inbound-debounce.js";
 import { resolveSlackThreadTargets } from "../threading.js";
+import { inferSlackChannelType, type SlackMonitorContext } from "./context.js";
 import { dispatchPreparedSlackMessage } from "./message-handler/dispatch.js";
 import { prepareSlackMessage } from "./message-handler/prepare.js";
 import { createSlackThreadTsResolver } from "./thread-resolution.js";
@@ -44,6 +44,12 @@ export function createSlackMessageHandler(params: {
       return `slack:${ctx.accountId}:${threadKey}:${senderId}`;
     },
     shouldDebounce: (entry) => {
+      // Skip debounce for DMs — Slack Assistant API blocks user input while status is set
+      const channelType =
+        entry.message.channel_type ?? inferSlackChannelType(entry.message.channel);
+      if (channelType === "im") {
+        return false;
+      }
       const text = entry.message.text ?? "";
       if (!text.trim()) {
         return false;
