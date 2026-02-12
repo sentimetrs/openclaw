@@ -322,6 +322,14 @@ describe("monitorSlackProvider tool results", () => {
     });
 
     await waitForSlackEvent("message");
+
+    // Clear accumulated setStatus calls from previous tests (mock is shared on
+    // the global client and not reset by resetSlackTestState).
+    const client = getSlackClient() as {
+      assistant?: { threads?: { setStatus?: ReturnType<typeof vi.fn> } };
+    };
+    client.assistant?.threads?.setStatus?.mockClear();
+
     const handler = getSlackHandlers()?.get("message");
     if (!handler) {
       throw new Error("Slack message handler not registered");
@@ -342,18 +350,16 @@ describe("monitorSlackProvider tool results", () => {
     controller.abort();
     await run;
 
-    const client = getSlackClient() as {
-      assistant?: { threads?: { setStatus?: ReturnType<typeof vi.fn> } };
-    };
     const setStatus = client.assistant?.threads?.setStatus;
-    expect(setStatus).toHaveBeenCalledTimes(2);
+    // 3 calls: immediate typing on dispatch + ensureStart on reply + clear on idle
+    expect(setStatus).toHaveBeenCalledTimes(3);
     expect(setStatus).toHaveBeenNthCalledWith(1, {
       token: "bot-token",
       channel_id: "C1",
       thread_ts: "123",
       status: "is typing...",
     });
-    expect(setStatus).toHaveBeenNthCalledWith(2, {
+    expect(setStatus).toHaveBeenNthCalledWith(3, {
       token: "bot-token",
       channel_id: "C1",
       thread_ts: "123",
