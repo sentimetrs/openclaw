@@ -96,6 +96,7 @@ describe("createFollowupRunner compaction", () => {
       sessionKey: "main",
       storePath,
       defaultModel: "anthropic/claude-opus-4-5",
+      queueKey: "test",
     });
 
     const queued = {
@@ -147,6 +148,7 @@ describe("createFollowupRunner messaging tool dedupe", () => {
       typing: createMockTypingController(),
       typingMode: "instant",
       defaultModel: "anthropic/claude-opus-4-5",
+      queueKey: "test",
     });
 
     await runner(baseQueuedRun());
@@ -167,6 +169,7 @@ describe("createFollowupRunner messaging tool dedupe", () => {
       typing: createMockTypingController(),
       typingMode: "instant",
       defaultModel: "anthropic/claude-opus-4-5",
+      queueKey: "test",
     });
 
     await runner(baseQueuedRun());
@@ -188,6 +191,7 @@ describe("createFollowupRunner messaging tool dedupe", () => {
       typing: createMockTypingController(),
       typingMode: "instant",
       defaultModel: "anthropic/claude-opus-4-5",
+      queueKey: "test",
     });
 
     await runner(baseQueuedRun("slack"));
@@ -228,6 +232,7 @@ describe("createFollowupRunner messaging tool dedupe", () => {
       sessionKey,
       storePath,
       defaultModel: "anthropic/claude-opus-4-5",
+      queueKey: "test",
     });
 
     await runner(baseQueuedRun("slack"));

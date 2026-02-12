@@ -169,7 +169,7 @@ describe("createTypingSignaler", () => {
 
     await signaler.signalRunStart();
 
-    expect(typing.startTypingLoop).toHaveBeenCalled();
+    expect(typing.startThinkingLoop).toHaveBeenCalled();
   });
 
   it("signals on text for message mode", async () => {

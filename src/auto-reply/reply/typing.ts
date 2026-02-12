@@ -2,18 +2,22 @@ import { isSilentReplyText, SILENT_REPLY_TOKEN } from "../tokens.js";
 
 export type TypingController = {
   onReplyStart: () => Promise<void>;
+  startThinkingLoop: () => Promise<void>;
   startTypingLoop: () => Promise<void>;
   startTypingOnText: (text?: string) => Promise<void>;
   refreshTypingTtl: () => void;
   isActive: () => boolean;
   markRunComplete: () => void;
   markDispatchIdle: () => void;
+  transitionToFollowup: () => void;
+  resetForFollowup: () => void;
   cleanup: () => void;
 };
 
 export function createTypingController(params: {
   onReplyStart?: () => Promise<void> | void;
   onCleanup?: () => void;
+  onPhaseChange?: (phase: "thinking" | "typing") => void;
   typingIntervalSeconds?: number;
   typingTtlMs?: number;
   silentToken?: string;
@@ -22,6 +26,7 @@ export function createTypingController(params: {
   const {
     onReplyStart,
     onCleanup,
+    onPhaseChange,
     typingIntervalSeconds = 6,
     typingTtlMs = 2 * 60_000,
     silentToken = SILENT_REPLY_TOKEN,
@@ -31,6 +36,7 @@ export function createTypingController(params: {
   let active = false;
   let runComplete = false;
   let dispatchIdle = false;
+  let phase: "thinking" | "typing" | undefined;
   // Important: callbacks (tool/block streaming) can fire late (after the run completed),
   // especially when upstream event emitters don't await async listeners.
   // Once we stop typing, we "seal" the controller so late events can't restart typing forever.
@@ -51,6 +57,7 @@ export function createTypingController(params: {
     active = false;
     runComplete = false;
     dispatchIdle = false;
+    phase = undefined;
   };
 
   const cleanup = () => {
@@ -133,12 +140,45 @@ export function createTypingController(params: {
     }
   };
 
+  const startThinkingLoop = async () => {
+    if (sealed) {
+      return;
+    }
+    if (runComplete) {
+      return;
+    }
+    if (!phase) {
+      phase = "thinking";
+      onPhaseChange?.("thinking");
+    }
+    refreshTypingTtl();
+    if (!onReplyStart) {
+      return;
+    }
+    if (typingIntervalMs <= 0) {
+      return;
+    }
+    if (typingTimer) {
+      return;
+    }
+    await ensureStart();
+    typingTimer = setInterval(() => {
+      void triggerTyping();
+    }, typingIntervalMs);
+  };
+
   const startTypingLoop = async () => {
     if (sealed) {
       return;
     }
     if (runComplete) {
       return;
+    }
+    // Phase upgrade: thinking → typing
+    const upgraded = phase === "thinking";
+    if (!phase || phase === "thinking") {
+      phase = "typing";
+      onPhaseChange?.("typing");
     }
     // Always refresh TTL when called, even if loop already running.
     // This keeps typing alive during long tool executions.
@@ -150,6 +190,10 @@ export function createTypingController(params: {
       return;
     }
     if (typingTimer) {
+      // Timer already running from thinking phase — trigger immediate update
+      if (upgraded) {
+        await triggerTyping();
+      }
       return;
     }
     await ensureStart();
@@ -183,14 +227,54 @@ export function createTypingController(params: {
     maybeStopOnIdle();
   };
 
+  const transitionToFollowup = () => {
+    if (sealed) {
+      return;
+    }
+    // Keep controller alive: don't set runComplete, don't cleanup.
+    // Reset started so ensureStart can fire again for the next run.
+    started = false;
+    runComplete = false;
+    // Switch phase to thinking (waiting for followup LLM).
+    if (phase !== "thinking") {
+      phase = "thinking";
+      onPhaseChange?.("thinking");
+      // Immediate status update.
+      void triggerTyping();
+    }
+  };
+
+  const resetForFollowup = () => {
+    // Clear timers.
+    if (typingTtlTimer) {
+      clearTimeout(typingTtlTimer);
+      typingTtlTimer = undefined;
+    }
+    if (typingTimer) {
+      clearInterval(typingTimer);
+      typingTimer = undefined;
+    }
+    // Full reset — controller is reusable.
+    sealed = false;
+    started = false;
+    active = false;
+    runComplete = false;
+    // Set dispatchIdle=true: followup runs have no dispatcher, so "dispatch" is always idle.
+    dispatchIdle = true;
+    phase = undefined;
+  };
+
   return {
     onReplyStart: ensureStart,
+    startThinkingLoop,
     startTypingLoop,
     startTypingOnText,
     refreshTypingTtl,
     isActive,
     markRunComplete,
     markDispatchIdle,
+    transitionToFollowup,
+    resetForFollowup,
     cleanup,
   };
 }

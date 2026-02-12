@@ -25,6 +25,8 @@ export type GetReplyOptions = {
   onReplyStart?: () => Promise<void> | void;
   /** Called when the typing controller cleans up (e.g., run ended with NO_REPLY). */
   onTypingCleanup?: () => void;
+  /** Called when the typing phase changes ("thinking" → "typing"). */
+  onPhaseChange?: (phase: "thinking" | "typing") => void;
   onTypingController?: (typing: TypingController) => void;
   isHeartbeat?: boolean;
   onPartialReply?: (payload: ReplyPayload) => Promise<void> | void;

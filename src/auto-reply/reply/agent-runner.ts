@@ -36,7 +36,12 @@ import { appendUsageLine, formatResponseUsageLine } from "./agent-runner-utils.j
 import { createAudioAsVoiceBuffer, createBlockReplyPipeline } from "./block-reply-pipeline.js";
 import { resolveBlockStreamingCoalescing } from "./block-streaming.js";
 import { createFollowupRunner } from "./followup-runner.js";
-import { enqueueFollowupRun, type FollowupRun, type QueueSettings } from "./queue.js";
+import {
+  enqueueFollowupRun,
+  getFollowupQueueDepth,
+  type FollowupRun,
+  type QueueSettings,
+} from "./queue.js";
 import { createReplyToModeFilterForChannel, resolveReplyToMode } from "./reply-threading.js";
 import { incrementCompactionCount } from "./session-updates.js";
 import { persistSessionUsageUpdate } from "./session-usage.js";
@@ -227,6 +232,7 @@ export async function runReplyAgent(params: {
     storePath,
     defaultModel,
     agentCfgContextTokens,
+    queueKey,
   });
 
   let responseUsageLine: string | undefined;
@@ -523,6 +529,10 @@ export async function runReplyAgent(params: {
     );
   } finally {
     blockReplyPipeline?.stop();
-    typing.markRunComplete();
+    if (getFollowupQueueDepth(queueKey) > 0) {
+      typing.transitionToFollowup();
+    } else {
+      typing.markRunComplete();
+    }
   }
 }

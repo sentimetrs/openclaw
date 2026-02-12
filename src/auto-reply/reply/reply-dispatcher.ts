@@ -172,7 +172,10 @@ export function createReplyDispatcherWithTyping(
     ...dispatcherOptions,
     onIdle: () => {
       typingController?.markDispatchIdle();
-      onIdle?.();
+      // Only fire stop when typing controller is done (not transitioning to followup).
+      if (!typingController || !typingController.isActive()) {
+        onIdle?.();
+      }
     },
   });
 
@@ -187,7 +190,10 @@ export function createReplyDispatcherWithTyping(
     },
     markDispatchIdle: () => {
       typingController?.markDispatchIdle();
-      onIdle?.();
+      // Only fire stop when typing controller is done (not transitioning to followup).
+      if (!typingController || !typingController.isActive()) {
+        onIdle?.();
+      }
     },
   };
 }

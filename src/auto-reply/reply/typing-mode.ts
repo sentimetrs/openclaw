@@ -67,7 +67,7 @@ export function createTypingSignaler(params: {
     if (disabled || !shouldStartImmediately) {
       return;
     }
-    await typing.startTypingLoop();
+    await typing.startThinkingLoop();
   };
 
   const signalMessageStart = async () => {
