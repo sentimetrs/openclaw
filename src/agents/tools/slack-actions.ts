@@ -48,7 +48,12 @@ function resolveThreadTsFromContext(
   explicitThreadTs: string | undefined,
   targetChannel: string,
   context: SlackActionContext | undefined,
+  noThread?: boolean,
 ): string | undefined {
+  // Agent explicitly requested no auto-threading — post to main channel
+  if (noThread) {
+    return undefined;
+  }
   // Agent explicitly provided threadTs - use it
   if (explicitThreadTs) {
     return explicitThreadTs;
@@ -189,10 +194,14 @@ export async function handleSlackAction(
         const mediaUrl = readStringParam(params, "mediaUrl");
         const buffer = readStringParam(params, "buffer", { trim: false });
         const filename = readStringParam(params, "filename");
+        const noThread =
+          params.noThread === true ||
+          (typeof params.noThread === "string" && params.noThread.trim().toLowerCase() === "true");
         const threadTs = resolveThreadTsFromContext(
           readStringParam(params, "threadTs"),
           to,
           context,
+          noThread,
         );
         const result = await sendSlackMessage(to, content, {
           ...writeOpts,
