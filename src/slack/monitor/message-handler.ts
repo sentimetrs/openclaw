@@ -77,7 +77,7 @@ export function createSlackMessageHandler(params: {
           .setSlackThreadStatus({
             channelId: entry.message.channel,
             threadTs: statusThreadTs,
-            status: "waiting for next messages...",
+            status: "read messages...",
           })
           .catch(() => {});
       }
