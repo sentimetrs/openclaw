@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import type { TypingMode } from "../../config/types.js";
-import type { OriginatingChannelType } from "../templating.js";
+import type { OriginatingChannelType, TemplateContext } from "../templating.js";
 import type { GetReplyOptions, ReplyPayload } from "../types.js";
 import type { FollowupRun } from "./queue.js";
 import type { TypingController } from "./typing.js";
@@ -15,6 +15,7 @@ import { registerAgentRunContext } from "../../infra/agent-events.js";
 import { defaultRuntime } from "../../runtime.js";
 import { stripHeartbeatToken } from "../heartbeat.js";
 import { isSilentReplyText, SILENT_REPLY_TOKEN } from "../tokens.js";
+import { buildThreadingToolContext } from "./agent-runner-utils.js";
 import {
   applyReplyThreading,
   filterMessagingToolDuplicates,
@@ -145,6 +146,19 @@ export function createFollowupRunner(params: {
               agentAccountId: queued.run.agentAccountId,
               messageTo: queued.originatingTo,
               messageThreadId: queued.originatingThreadId,
+              // Provider threading context for tool auto-injection (followup runs).
+              ...buildThreadingToolContext({
+                sessionCtx: {
+                  Provider: queued.originatingChannel ?? queued.run.messageProvider,
+                  To: queued.originatingTo,
+                  AccountId: queued.originatingAccountId ?? queued.run.agentAccountId,
+                  ChatType: queued.originatingChatType,
+                  MessageThreadId: queued.originatingThreadId,
+                  ThreadLabel: queued.originatingThreadId != null ? "thread" : undefined,
+                } as TemplateContext,
+                config: queued.run.config,
+                hasRepliedRef: { value: false },
+              }),
               groupId: queued.run.groupId,
               groupChannel: queued.run.groupChannel,
               groupSpace: queued.run.groupSpace,

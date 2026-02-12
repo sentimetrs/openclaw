@@ -44,20 +44,6 @@ export async function dispatchPreparedSlackMessage(prepared: PreparedSlackMessag
   const incomingThreadTs = message.thread_ts;
   let didSetStatus = false;
 
-  // Show typing indicator immediately for instant user feedback, before AI
-  // processing starts.  The later `onReplyStart` callback will refresh it;
-  // the `stop` callback will clear it when done.
-  if (statusThreadTs) {
-    didSetStatus = true;
-    ctx
-      .setSlackThreadStatus({
-        channelId: message.channel,
-        threadTs: statusThreadTs,
-        status: "is typing...",
-      })
-      .catch(() => {});
-  }
-
   // Shared mutable ref for "replyToMode=first". Both tool + auto-reply flows
   // mark this to ensure only the first reply is threaded.
   const hasRepliedRef = { value: false };
