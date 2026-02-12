@@ -358,6 +358,7 @@ describe("monitorSlackProvider tool results", () => {
       channel_id: "C1",
       thread_ts: "123",
       status: "thinking...",
+      loading_messages: ["thinking..."],
     });
     expect(setStatus).toHaveBeenNthCalledWith(3, {
       token: "bot-token",
