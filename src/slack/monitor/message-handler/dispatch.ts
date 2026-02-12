@@ -44,16 +44,16 @@ export async function dispatchPreparedSlackMessage(prepared: PreparedSlackMessag
   const incomingThreadTs = message.thread_ts;
   let didSetStatus = false;
 
-  // Show typing indicator immediately for instant user feedback, before AI
-  // processing starts.  The later `onReplyStart` callback will refresh it;
-  // the `stop` callback will clear it when done.
+  // Show "thinking…" status immediately for instant user feedback, before AI
+  // processing starts.  The typing loop will switch to "typing…" when
+  // the agent starts producing text; `stop` will clear it when done.
   if (statusThreadTs) {
     didSetStatus = true;
     ctx
       .setSlackThreadStatus({
         channelId: message.channel,
         threadTs: statusThreadTs,
-        status: "is typing...",
+        status: "thinking...",
       })
       .catch(() => {});
   }
@@ -75,7 +75,7 @@ export async function dispatchPreparedSlackMessage(prepared: PreparedSlackMessag
       await ctx.setSlackThreadStatus({
         channelId: message.channel,
         threadTs: statusThreadTs,
-        status: "is typing...",
+        status: "typing...",
       });
     },
     stop: async () => {
@@ -153,6 +153,20 @@ export async function dispatchPreparedSlackMessage(prepared: PreparedSlackMessag
           ? !account.config.blockStreaming
           : undefined,
       onModelSelected,
+      onDrainPhaseChange: statusThreadTs
+        ? (phase) => {
+            const status =
+              phase === "debounce-start" ? "waiting for next messages..." : "thinking...";
+            didSetStatus = true;
+            ctx
+              .setSlackThreadStatus({
+                channelId: message.channel,
+                threadTs: statusThreadTs,
+                status,
+              })
+              .catch(() => {});
+          }
+        : undefined,
     },
   });
   markDispatchIdle();

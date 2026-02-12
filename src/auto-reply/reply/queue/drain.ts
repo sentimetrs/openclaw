@@ -9,9 +9,17 @@ import {
 import { isRoutableChannel } from "../route-reply.js";
 import { FOLLOWUP_QUEUES } from "./state.js";
 
+export type DrainCallbacks = {
+  /** Called before waiting for debounce (e.g. to set "waiting for next messages…" status). */
+  onDebounceStart?: () => void;
+  /** Called after debounce expires, before processing (e.g. to set "thinking…" status). */
+  onProcessingStart?: () => void;
+};
+
 export function scheduleFollowupDrain(
   key: string,
   runFollowup: (run: FollowupRun) => Promise<void>,
+  drainCallbacks?: DrainCallbacks,
 ): void {
   const queue = FOLLOWUP_QUEUES.get(key);
   if (!queue || queue.draining) {
@@ -22,7 +30,9 @@ export function scheduleFollowupDrain(
     try {
       let forceIndividualCollect = false;
       while (queue.items.length > 0 || queue.droppedCount > 0) {
+        drainCallbacks?.onDebounceStart?.();
         await waitForQueueDebounce(queue);
+        drainCallbacks?.onProcessingStart?.();
         if (queue.mode === "collect") {
           // Once the batch is mixed, never collect again within this drain.
           // Prevents “collect after shift” collapsing different targets.
