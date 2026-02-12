@@ -6,6 +6,7 @@ import {
   resolveInboundDebounceMs,
 } from "../../auto-reply/inbound-debounce.js";
 import { resolveSlackThreadTargets } from "../threading.js";
+import { resolveSlackChannelConfig } from "./channel-config.js";
 import { inferSlackChannelType, type SlackMonitorContext } from "./context.js";
 import { dispatchPreparedSlackMessage } from "./message-handler/dispatch.js";
 import { prepareSlackMessage } from "./message-handler/prepare.js";
@@ -51,8 +52,14 @@ export function createSlackMessageHandler(params: {
         return false;
       }
       // Skip debounce when mention is required but bot wasn't mentioned —
-      // message won't be processed, so no status should be shown
-      if (ctx.defaultRequireMention) {
+      // message won't be processed, so no status should be shown.
+      // Use per-channel config (not global default) to match prepare.ts logic.
+      const channelConfig = resolveSlackChannelConfig({
+        channelId: entry.message.channel,
+        channels: ctx.channelsConfig,
+        defaultRequireMention: ctx.defaultRequireMention,
+      });
+      if (channelConfig?.requireMention !== false) {
         const isMentioned = entry.opts.source === "app_mention" || entry.opts.wasMentioned;
         if (!isMentioned) {
           return false;
