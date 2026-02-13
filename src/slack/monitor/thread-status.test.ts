@@ -314,12 +314,12 @@ describe("ThreadStatusManager", () => {
     await vi.advanceTimersByTimeAsync(0);
 
     handle.release();
-    // During grace, counter still ticks.
+    // During grace, counter is stopped (no zombie ticks).
     push.mockClear();
     await vi.advanceTimersByTimeAsync(1_000);
-    expect(push).toHaveBeenCalled();
+    expect(push).not.toHaveBeenCalled();
 
-    // After grace → stop.
+    // After grace → destroy.
     await vi.advanceTimersByTimeAsync(5_000);
     push.mockClear();
     await vi.advanceTimersByTimeAsync(2_000);

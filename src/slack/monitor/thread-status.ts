@@ -218,6 +218,8 @@ class ThreadStatusManager {
 
     // Grace period: keep current status visible between sequential dispatches.
     // Slack will auto-clear after bot posts or after 2min.
+    // Stop counter so status text stays frozen during grace (no zombie ticks).
+    this.stopCounter();
     logVerbose(`[thread-status] grace start: key=${this.key} graceMs=${this.graceMs}`);
     this.graceTimer = setTimeout(() => {
       this.graceTimer = null;

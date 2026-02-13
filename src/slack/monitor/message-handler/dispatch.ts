@@ -84,6 +84,11 @@ export async function dispatchPreparedSlackMessage(prepared: PreparedSlackMessag
       statusHandle?.setStatus(statusRef.phase);
     },
     stop: async () => {
+      // Show "reading messages..." before release if there are pending messages.
+      // Done here (not in deliver) to avoid flash between chunks of the same run.
+      if (prepared.hasPendingMessages?.()) {
+        statusHandle?.setStatus("reading");
+      }
       statusHandle?.release();
     },
     onStartError: (err) => {
@@ -131,9 +136,6 @@ export async function dispatchPreparedSlackMessage(prepared: PreparedSlackMessag
         replyThreadTs,
       });
       replyPlan.markSent();
-      if (prepared.hasPendingMessages?.()) {
-        statusHandle?.setStatus("reading");
-      }
     },
     onError: (err, info) => {
       runtime.error?.(danger(`slack ${info.kind} reply failed: ${String(err)}`));

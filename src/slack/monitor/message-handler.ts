@@ -9,7 +9,7 @@ import {
 import { dispatchPreparedSlackMessage } from "./message-handler/dispatch.js";
 import { prepareSlackMessage } from "./message-handler/prepare.js";
 import { createSlackThreadTsResolver } from "./thread-resolution.js";
-import { isThreadActive, pushCurrentStatus } from "./thread-status.js";
+import { acquireThreadStatus, isThreadActive, pushCurrentStatus } from "./thread-status.js";
 
 export type SlackMessageHandler = (
   message: SlackMessageEvent,
@@ -119,15 +119,23 @@ export function createSlackMessageHandler(params: {
     if (isThreadActive(key)) {
       pushCurrentStatus(key);
     } else {
-      ctx
-        .setSlackThreadStatus({
-          channelId: message.channel,
-          threadTs,
-          status: "reading messages...",
-        })
-        .catch((err) => {
+      // Create manager early so the "reading" status has restoration capability.
+      // Release immediately — grace period keeps the manager alive for dispatch.
+      const handle = acquireThreadStatus({
+        key,
+        push: (status) =>
+          ctx.setSlackThreadStatus({
+            channelId: message.channel,
+            threadTs,
+            status,
+          }),
+        graceMs: 10_000, // longer grace to cover debounce window
+        onError: (err) => {
           ctx.runtime.error?.(`pushEarlyStatus failed: ${String(err)}`);
-        });
+        },
+      });
+      handle.setStatus("reading");
+      handle.release();
     }
   };
 
