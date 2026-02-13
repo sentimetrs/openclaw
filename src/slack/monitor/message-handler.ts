@@ -23,25 +23,29 @@ export function createSlackMessageHandler(params: {
   const debounceMs = resolveInboundDebounceMs({ cfg: ctx.cfg, channel: "slack" });
   const threadTsResolver = createSlackThreadTsResolver({ client: ctx.app.client });
 
-  const debouncer = createInboundDebouncer<{
+  type DebouncerEntry = {
     message: SlackMessageEvent;
     opts: { source: "message" | "app_mention"; wasMentioned?: boolean };
-  }>({
+  };
+
+  const buildDebouncerKey = (entry: DebouncerEntry): string | null => {
+    const senderId = entry.message.user ?? entry.message.bot_id;
+    if (!senderId) {
+      return null;
+    }
+    const messageTs = entry.message.ts ?? entry.message.event_ts;
+    // If Slack flags a thread reply but omits thread_ts, isolate it from root debouncing.
+    const threadKey = entry.message.thread_ts
+      ? `${entry.message.channel}:${entry.message.thread_ts}`
+      : entry.message.parent_user_id && messageTs
+        ? `${entry.message.channel}:maybe-thread:${messageTs}`
+        : entry.message.channel;
+    return `slack:${ctx.accountId}:${threadKey}:${senderId}`;
+  };
+
+  const debouncer = createInboundDebouncer<DebouncerEntry>({
     debounceMs,
-    buildKey: (entry) => {
-      const senderId = entry.message.user ?? entry.message.bot_id;
-      if (!senderId) {
-        return null;
-      }
-      const messageTs = entry.message.ts ?? entry.message.event_ts;
-      // If Slack flags a thread reply but omits thread_ts, isolate it from root debouncing.
-      const threadKey = entry.message.thread_ts
-        ? `${entry.message.channel}:${entry.message.thread_ts}`
-        : entry.message.parent_user_id && messageTs
-          ? `${entry.message.channel}:maybe-thread:${messageTs}`
-          : entry.message.channel;
-      return `slack:${ctx.accountId}:${threadKey}:${senderId}`;
-    },
+    buildKey: buildDebouncerKey,
     shouldDebounce: (entry) => {
       const text = entry.message.text ?? "";
       if (!text.trim()) {
@@ -88,6 +92,10 @@ export function createSlackMessageHandler(params: {
           prepared.ctxPayload.MessageSidFirst = ids[0];
           prepared.ctxPayload.MessageSidLast = ids[ids.length - 1];
         }
+      }
+      const debouncerKey = buildDebouncerKey(last);
+      if (debouncerKey) {
+        prepared.hasPendingMessages = () => debouncer.hasPending(debouncerKey);
       }
       await dispatchPreparedSlackMessage(prepared);
     },

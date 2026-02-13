@@ -242,17 +242,11 @@ export function createTypingController(params: {
       // Immediate status update.
       void triggerTyping();
     }
-    // Restart the typing indicator timer with a very short interval.
-    // External systems (e.g. Slack) clear assistant thread status when the
-    // bot posts a message, so we poll aggressively to restore it instantly.
-    // resetForFollowup() clears this timer before the followup starts.
-    if (onReplyStart) {
-      if (typingTimer) {
-        clearInterval(typingTimer);
-      }
-      typingTimer = setInterval(() => {
-        void triggerTyping();
-      }, 100);
+    // Clear existing typing loop timer — the channel layer (e.g. StatusManager)
+    // handles continuous push during the gap between main run and followup.
+    if (typingTimer) {
+      clearInterval(typingTimer);
+      typingTimer = undefined;
     }
   };
 

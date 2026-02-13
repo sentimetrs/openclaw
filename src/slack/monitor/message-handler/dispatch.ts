@@ -12,6 +12,7 @@ import { danger, logVerbose, shouldLogVerbose } from "../../../globals.js";
 import { removeSlackReaction } from "../../actions.js";
 import { resolveSlackThreadTargets } from "../../threading.js";
 import { createSlackReplyDeliveryPlan, deliverReplies } from "../replies.js";
+import { acquireThreadStatus } from "../thread-status.js";
 
 export async function dispatchPreparedSlackMessage(prepared: PreparedSlackMessage) {
   const { ctx, account, message, route } = prepared;
@@ -42,7 +43,6 @@ export async function dispatchPreparedSlackMessage(prepared: PreparedSlackMessag
 
   const messageTs = message.ts ?? message.event_ts;
   const incomingThreadTs = message.thread_ts;
-  let didSetStatus = false;
   const statusRef = { text: "is thinking..." };
 
   // Shared mutable ref for "replyToMode=first". Both tool + auto-reply flows
@@ -56,25 +56,34 @@ export async function dispatchPreparedSlackMessage(prepared: PreparedSlackMessag
   });
 
   const typingTarget = statusThreadTs ? `${message.channel}/${statusThreadTs}` : message.channel;
+
+  const statusHandle = statusThreadTs
+    ? acquireThreadStatus({
+        key: `${message.channel}:${statusThreadTs}`,
+        push: (status) =>
+          ctx.setSlackThreadStatus({
+            channelId: message.channel,
+            threadTs: statusThreadTs,
+            status,
+          }),
+        shouldGrace: prepared.hasPendingMessages,
+        onError: (err) => {
+          logTypingFailure({
+            log: (message) => runtime.error?.(danger(message)),
+            channel: "slack",
+            target: typingTarget,
+            error: err,
+          });
+        },
+      })
+    : null;
+
   const typingCallbacks = createTypingCallbacks({
     start: async () => {
-      didSetStatus = true;
-      await ctx.setSlackThreadStatus({
-        channelId: message.channel,
-        threadTs: statusThreadTs,
-        status: statusRef.text,
-      });
+      statusHandle?.setStatus(statusRef.text);
     },
     stop: async () => {
-      if (!didSetStatus) {
-        return;
-      }
-      didSetStatus = false;
-      await ctx.setSlackThreadStatus({
-        channelId: message.channel,
-        threadTs: statusThreadTs,
-        status: "",
-      });
+      statusHandle?.release();
     },
     onStartError: (err) => {
       logTypingFailure({
@@ -143,6 +152,7 @@ export async function dispatchPreparedSlackMessage(prepared: PreparedSlackMessag
       onModelSelected,
       onPhaseChange: (phase) => {
         statusRef.text = phase === "thinking" ? "is thinking..." : "is typing...";
+        statusHandle?.setStatus(statusRef.text);
       },
     },
   });

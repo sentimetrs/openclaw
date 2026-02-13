@@ -106,5 +106,7 @@ export function createInboundDebouncer<T>(params: {
     scheduleFlush(key, buffer);
   };
 
-  return { enqueue, flushKey };
+  const hasPending = (key: string): boolean => buffers.has(key);
+
+  return { enqueue, flushKey, hasPending };
 }
