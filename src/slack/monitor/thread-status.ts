@@ -1,8 +1,10 @@
 import { logVerbose } from "../../globals.js";
 
+export type StatusPhase = "reading" | "thinking" | "reasoning";
+
 export type ThreadStatusHandle = {
-  setStatus: (text: string) => void;
-  /** Stop the push loop so Slack can auto-clear status on bot reply. Next setStatus() restarts it. */
+  setStatus: (phase: StatusPhase) => void;
+  /** Stop the counter timer so Slack can auto-clear status on bot reply. Next setStatus() restarts it. */
   pause: () => void;
   release: () => void;
 };
@@ -10,9 +12,7 @@ export type ThreadStatusHandle = {
 type ThreadStatusManagerParams = {
   key: string;
   push: (status: string) => Promise<void>;
-  pushIntervalMs: number;
   graceMs: number;
-  graceText: string;
   onError?: (err: unknown) => void;
 };
 
@@ -20,7 +20,7 @@ type ThreadStatusManagerParams = {
 const managers = new Map<string, ThreadStatusManager>();
 
 /**
- * For testing: clears all managers (stops loops, cancels grace timers).
+ * For testing: clears all managers (stops timers, cancels grace).
  * @internal
  */
 export function _resetAllManagers(): void {
@@ -30,39 +30,47 @@ export function _resetAllManagers(): void {
   managers.clear();
 }
 
+/** Check if a thread has an active status manager with active handles. */
+export function isThreadActive(key: string): boolean {
+  const mgr = managers.get(key);
+  return mgr ? mgr.isActive() : false;
+}
+
+/** Get the current formatted status text for a thread, or null. */
+export function getCurrentStatus(key: string): string | null {
+  const mgr = managers.get(key);
+  return mgr ? mgr.getFormattedStatus() : null;
+}
+
+/** Re-push the current status text (instant restoration after Slack auto-clear). */
+export function pushCurrentStatus(key: string): void {
+  const mgr = managers.get(key);
+  if (mgr) {
+    mgr.rePush();
+  }
+}
+
 /**
  * Acquire a shared status handle for a Slack thread.
  *
- * Multiple dispatches targeting the same thread share one push loop,
+ * Multiple dispatches targeting the same thread share one manager,
  * preventing status blinks between sequential dispatches.
  */
 export function acquireThreadStatus(params: {
   key: string;
   push: (status: string) => Promise<void>;
-  pushIntervalMs?: number;
   graceMs?: number;
-  graceText?: string;
   shouldGrace?: () => boolean;
   onError?: (err: unknown) => void;
 }): ThreadStatusHandle {
-  const {
-    key,
-    push,
-    pushIntervalMs = 10,
-    graceMs = 5_000,
-    graceText = "is thinking...",
-    shouldGrace,
-    onError,
-  } = params;
+  const { key, push, graceMs = 5_000, shouldGrace, onError } = params;
 
   let mgr = managers.get(key);
   if (!mgr) {
     mgr = new ThreadStatusManager({
       key,
       push,
-      pushIntervalMs,
       graceMs,
-      graceText,
       onError,
     });
     managers.set(key, mgr);
@@ -70,27 +78,57 @@ export function acquireThreadStatus(params: {
   return mgr.acquire(shouldGrace);
 }
 
+const PHASE_LABELS: Record<StatusPhase, string> = {
+  reading: "reading messages...",
+  thinking: "thinking",
+  reasoning: "reasoning",
+};
+
+function formatStatus(phase: StatusPhase, seconds: number): string {
+  if (phase === "reading") {
+    return PHASE_LABELS.reading;
+  }
+  return `${PHASE_LABELS[phase]} ${seconds}s`;
+}
+
 class ThreadStatusManager {
-  private currentText = "";
+  private phase: StatusPhase | null = null;
+  private seconds = 0;
   private activeHandles = 0;
-  private pushTimer: ReturnType<typeof setInterval> | null = null;
+  private counterTimer: ReturnType<typeof setInterval> | null = null;
   private graceTimer: ReturnType<typeof setTimeout> | null = null;
   private pushing = false;
 
   private readonly key: string;
   private readonly pushFn: (status: string) => Promise<void>;
-  private readonly pushIntervalMs: number;
   private readonly graceMs: number;
-  private readonly graceText: string;
   private readonly onError?: (err: unknown) => void;
 
   constructor(params: ThreadStatusManagerParams) {
     this.key = params.key;
     this.pushFn = params.push;
-    this.pushIntervalMs = params.pushIntervalMs;
     this.graceMs = params.graceMs;
-    this.graceText = params.graceText;
     this.onError = params.onError;
+  }
+
+  isActive(): boolean {
+    return this.activeHandles > 0;
+  }
+
+  getFormattedStatus(): string | null {
+    if (!this.phase) {
+      return null;
+    }
+    return formatStatus(this.phase, this.seconds);
+  }
+
+  /** Re-push current status (for instant restoration). */
+  rePush(): void {
+    const text = this.getFormattedStatus();
+    if (text) {
+      logVerbose(`[thread-status] rePush: key=${this.key} text="${text}"`);
+      void this.pushOnce(text);
+    }
   }
 
   acquire(shouldGrace?: () => boolean): ThreadStatusHandle {
@@ -100,30 +138,18 @@ class ThreadStatusManager {
 
     let released = false;
     return {
-      setStatus: (text: string) => {
+      setStatus: (phase: StatusPhase) => {
         if (released) {
           return;
         }
-        const changed = text !== this.currentText;
-        if (changed) {
-          logVerbose(`[thread-status] setStatus: key=${this.key} text="${text}"`);
-        }
-        this.currentText = text;
-        if (text && !this.pushTimer) {
-          this.startPushLoop();
-        } else if (changed && text && this.pushTimer) {
-          // Push immediately on status change so the user sees the
-          // transition (e.g. thinking→typing) without waiting for
-          // the next interval tick.
-          void this.pushTick();
-        }
+        this.setPhase(phase);
       },
       pause: () => {
-        if (released || !this.pushTimer) {
+        if (released) {
           return;
         }
         logVerbose(`[thread-status] pause: key=${this.key}`);
-        this.stopLoop();
+        this.stopCounter();
       },
       release: () => {
         if (released) {
@@ -138,7 +164,33 @@ class ThreadStatusManager {
   /** Force-stop everything (for testing). */
   forceDestroy(): void {
     this.cancelGrace();
-    this.stopLoop();
+    this.stopCounter();
+  }
+
+  private setPhase(phase: StatusPhase): void {
+    const changed = phase !== this.phase;
+    this.phase = phase;
+    this.seconds = 0;
+
+    if (changed) {
+      logVerbose(`[thread-status] setPhase: key=${this.key} phase="${phase}"`);
+    }
+
+    // Stop existing counter.
+    this.stopCounter();
+
+    // Push immediately.
+    const text = formatStatus(phase, 0);
+    void this.pushOnce(text);
+
+    // Start 1s counter for thinking/reasoning.
+    if (phase !== "reading") {
+      this.counterTimer = setInterval(() => {
+        this.seconds++;
+        const tickText = formatStatus(this.phase!, this.seconds);
+        void this.pushOnce(tickText);
+      }, 1_000);
+    }
   }
 
   private releaseHandle(shouldGrace?: () => boolean): void {
@@ -151,24 +203,22 @@ class ThreadStatusManager {
       return;
     }
 
-    if (!this.pushTimer) {
-      // Push loop never started (e.g. typingMode=never) — just destroy.
+    if (!this.phase) {
+      // Never set status — just destroy.
       this.destroy();
       return;
     }
 
     // If the caller signals that no more dispatches are pending, stop immediately.
-    // Slack auto-clears the status when the bot posts a message or after 2 min.
     if (graceResult === false) {
       logVerbose(`[thread-status] no pending — stop immediately: key=${this.key}`);
       this.stopAndDestroy();
       return;
     }
 
-    // Grace period: keep pushing graceText so the status stays visible
-    // between sequential dispatches, then stop (Slack will auto-clear).
+    // Grace period: keep current status visible between sequential dispatches.
+    // Slack will auto-clear after bot posts or after 2min.
     logVerbose(`[thread-status] grace start: key=${this.key} graceMs=${this.graceMs}`);
-    this.currentText = this.graceText;
     this.graceTimer = setTimeout(() => {
       this.graceTimer = null;
       logVerbose(`[thread-status] grace end: key=${this.key}`);
@@ -176,20 +226,13 @@ class ThreadStatusManager {
     }, this.graceMs);
   }
 
-  private startPushLoop(): void {
-    logVerbose(`[thread-status] push loop start: key=${this.key}`);
-    // Immediate first push.
-    void this.pushTick();
-    this.pushTimer = setInterval(() => void this.pushTick(), this.pushIntervalMs);
-  }
-
-  private async pushTick(): Promise<void> {
+  private async pushOnce(text: string): Promise<void> {
     if (this.pushing) {
       return;
     }
     this.pushing = true;
     try {
-      await this.pushFn(this.currentText);
+      await this.pushFn(text);
     } catch (err) {
       this.onError?.(err);
     } finally {
@@ -204,22 +247,22 @@ class ThreadStatusManager {
     }
   }
 
-  private stopLoop(): void {
-    if (this.pushTimer) {
-      clearInterval(this.pushTimer);
-      this.pushTimer = null;
+  private stopCounter(): void {
+    if (this.counterTimer) {
+      clearInterval(this.counterTimer);
+      this.counterTimer = null;
     }
   }
 
   private stopAndDestroy(): void {
-    this.stopLoop();
+    this.stopCounter();
     this.destroy();
   }
 
   private destroy(): void {
     logVerbose(`[thread-status] destroy: key=${this.key}`);
     this.cancelGrace();
-    this.stopLoop();
+    this.stopCounter();
     managers.delete(this.key);
   }
 }
