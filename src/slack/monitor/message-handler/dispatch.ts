@@ -116,6 +116,9 @@ export async function dispatchPreparedSlackMessage(prepared: PreparedSlackMessag
     ...prefixOptions,
     humanDelay: resolveHumanDelayConfig(cfg, route.agentId),
     deliver: async (payload) => {
+      // Pause push loop BEFORE sending so Slack can auto-clear the status.
+      // Next setStatus() call (e.g. from a followup) will restart it.
+      statusHandle?.pause();
       const replyThreadTs = replyPlan.nextThreadTs();
       await deliverReplies({
         replies: [payload],
@@ -127,9 +130,6 @@ export async function dispatchPreparedSlackMessage(prepared: PreparedSlackMessag
         replyThreadTs,
       });
       replyPlan.markSent();
-      // Slack clears thread status when bot posts a message.
-      // Re-push immediately so the user sees the status without a gap.
-      statusHandle?.refresh();
     },
     onError: (err, info) => {
       runtime.error?.(danger(`slack ${info.kind} reply failed: ${String(err)}`));

@@ -382,26 +382,36 @@ describe("ThreadStatusManager", () => {
     await vi.advanceTimersByTimeAsync(200);
   });
 
-  it("refresh: forces immediate re-push of current text", async () => {
+  it("pause: stops push loop, next setStatus restarts it", async () => {
     vi.useFakeTimers();
     const push = vi.fn().mockResolvedValue(undefined);
 
     const handle = acquireThreadStatus({
       key: "C1:T1",
       push,
-      pushIntervalMs: 10_000,
+      pushIntervalMs: 100,
       graceMs: 5_000,
     });
 
     handle.setStatus("is thinking...");
     await vi.advanceTimersByTimeAsync(0);
-    expect(push).toHaveBeenCalledTimes(1);
-
-    // refresh triggers an immediate push without waiting for interval.
-    push.mockClear();
-    handle.refresh();
-    await vi.advanceTimersByTimeAsync(0);
     expect(push).toHaveBeenCalledWith("is thinking...");
+
+    // pause stops the push loop.
+    push.mockClear();
+    handle.pause();
+    await vi.advanceTimersByTimeAsync(500);
+    expect(push).not.toHaveBeenCalled();
+
+    // setStatus restarts the loop.
+    handle.setStatus("is typing...");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(push).toHaveBeenCalledWith("is typing...");
+
+    // Loop is running again.
+    push.mockClear();
+    await vi.advanceTimersByTimeAsync(100);
+    expect(push).toHaveBeenCalledWith("is typing...");
 
     handle.release();
     await vi.advanceTimersByTimeAsync(5_100);

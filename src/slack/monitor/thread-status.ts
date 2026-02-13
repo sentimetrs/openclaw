@@ -2,8 +2,8 @@ import { logVerbose } from "../../globals.js";
 
 export type ThreadStatusHandle = {
   setStatus: (text: string) => void;
-  /** Force re-push the current status (e.g. after Slack clears it on bot reply). */
-  refresh: () => void;
+  /** Stop the push loop so Slack can auto-clear status on bot reply. Next setStatus() restarts it. */
+  pause: () => void;
   release: () => void;
 };
 
@@ -118,12 +118,12 @@ class ThreadStatusManager {
           void this.pushTick();
         }
       },
-      refresh: () => {
-        if (released || !this.currentText || !this.pushTimer) {
+      pause: () => {
+        if (released || !this.pushTimer) {
           return;
         }
-        logVerbose(`[thread-status] refresh: key=${this.key} text="${this.currentText}"`);
-        void this.pushTick();
+        logVerbose(`[thread-status] pause: key=${this.key}`);
+        this.stopLoop();
       },
       release: () => {
         if (released) {
