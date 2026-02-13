@@ -1,3 +1,4 @@
+import type { StatusPhase } from "../thread-status.js";
 import type { PreparedSlackMessage } from "./types.js";
 import { resolveHumanDelayConfig } from "../../../agents/identity.js";
 import { dispatchInboundMessage } from "../../../auto-reply/dispatch.js";
@@ -43,7 +44,7 @@ export async function dispatchPreparedSlackMessage(prepared: PreparedSlackMessag
 
   const messageTs = message.ts ?? message.event_ts;
   const incomingThreadTs = message.thread_ts;
-  const statusRef = { text: "is thinking..." };
+  const statusRef = { phase: "thinking" as StatusPhase };
 
   // Shared mutable ref for "replyToMode=first". Both tool + auto-reply flows
   // mark this to ensure only the first reply is threaded.
@@ -80,7 +81,7 @@ export async function dispatchPreparedSlackMessage(prepared: PreparedSlackMessag
 
   const typingCallbacks = createTypingCallbacks({
     start: async () => {
-      statusHandle?.setStatus(statusRef.text);
+      statusHandle?.setStatus(statusRef.phase);
     },
     stop: async () => {
       statusHandle?.release();
@@ -130,6 +131,9 @@ export async function dispatchPreparedSlackMessage(prepared: PreparedSlackMessag
         replyThreadTs,
       });
       replyPlan.markSent();
+      if (prepared.hasPendingMessages?.()) {
+        statusHandle?.setStatus("reading");
+      }
     },
     onError: (err, info) => {
       runtime.error?.(danger(`slack ${info.kind} reply failed: ${String(err)}`));
@@ -154,8 +158,8 @@ export async function dispatchPreparedSlackMessage(prepared: PreparedSlackMessag
           : undefined,
       onModelSelected,
       onPhaseChange: (phase) => {
-        statusRef.text = phase === "thinking" ? "is thinking..." : "is typing...";
-        statusHandle?.setStatus(statusRef.text);
+        statusRef.phase = phase === "thinking" ? "thinking" : "reasoning";
+        statusHandle?.setStatus(statusRef.phase);
       },
     },
   });
