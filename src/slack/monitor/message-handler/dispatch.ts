@@ -127,6 +127,9 @@ export async function dispatchPreparedSlackMessage(prepared: PreparedSlackMessag
         replyThreadTs,
       });
       replyPlan.markSent();
+      // Slack clears thread status when bot posts a message.
+      // Re-push immediately so the user sees the status without a gap.
+      statusHandle?.refresh();
     },
     onError: (err, info) => {
       runtime.error?.(danger(`slack ${info.kind} reply failed: ${String(err)}`));
