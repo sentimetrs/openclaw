@@ -48,7 +48,7 @@ export function acquireThreadStatus(params: {
   const {
     key,
     push,
-    pushIntervalMs = 10_000,
+    pushIntervalMs = 10,
     graceMs = 5_000,
     graceText = "is thinking...",
     shouldGrace,
