@@ -37,6 +37,11 @@ export function createTypingController(params: {
   let runComplete = false;
   let dispatchIdle = false;
   let phase: "thinking" | "typing" | undefined;
+  // Set by transitionToFollowup() so markDispatchIdle() can re-trigger typing
+  // after all replies are delivered. External systems (e.g. Slack) may auto-clear
+  // the status indicator when the bot sends a message; this flag ensures we
+  // re-set it once the dispatch queue is fully drained.
+  let transitioning = false;
   // Important: callbacks (tool/block streaming) can fire late (after the run completed),
   // especially when upstream event emitters don't await async listeners.
   // Once we stop typing, we "seal" the controller so late events can't restart typing forever.
@@ -57,6 +62,7 @@ export function createTypingController(params: {
     active = false;
     runComplete = false;
     dispatchIdle = false;
+    transitioning = false;
     phase = undefined;
   };
 
@@ -225,6 +231,14 @@ export function createTypingController(params: {
   const markDispatchIdle = () => {
     dispatchIdle = true;
     maybeStopOnIdle();
+    // Re-trigger status after all replies are delivered. External systems
+    // (e.g. Slack assistant.threads.setStatus) auto-clear the indicator
+    // when the bot posts a message. If we're transitioning to a followup
+    // run, immediately re-set the status so the user sees continuity.
+    if (transitioning && active && !sealed) {
+      transitioning = false;
+      void triggerTyping();
+    }
   };
 
   const transitionToFollowup = () => {
@@ -235,6 +249,9 @@ export function createTypingController(params: {
     // Reset started so ensureStart can fire again for the next run.
     started = false;
     runComplete = false;
+    // Signal that we expect markDispatchIdle to re-trigger typing after
+    // the final reply is delivered (external systems may clear the status).
+    transitioning = true;
     // Switch phase to thinking (waiting for followup LLM).
     if (phase !== "thinking") {
       phase = "thinking";
@@ -259,6 +276,7 @@ export function createTypingController(params: {
     started = false;
     active = false;
     runComplete = false;
+    transitioning = false;
     // Set dispatchIdle=true: followup runs have no dispatcher, so "dispatch" is always idle.
     dispatchIdle = true;
     phase = undefined;
