@@ -1,3 +1,5 @@
+import { logVerbose } from "../../globals.js";
+
 export type ThreadStatusHandle = {
   setStatus: (text: string) => void;
   release: () => void;
@@ -92,12 +94,16 @@ class ThreadStatusManager {
   acquire(shouldGrace?: () => boolean): ThreadStatusHandle {
     this.activeHandles++;
     this.cancelGrace();
+    logVerbose(`[thread-status] acquire: key=${this.key} handles=${this.activeHandles}`);
 
     let released = false;
     return {
       setStatus: (text: string) => {
         if (released) {
           return;
+        }
+        if (text !== this.currentText) {
+          logVerbose(`[thread-status] setStatus: key=${this.key} text="${text}"`);
         }
         this.currentText = text;
         if (text && !this.pushTimer) {
@@ -122,6 +128,10 @@ class ThreadStatusManager {
 
   private releaseHandle(shouldGrace?: () => boolean): void {
     this.activeHandles = Math.max(0, this.activeHandles - 1);
+    const graceResult = shouldGrace ? shouldGrace() : undefined;
+    logVerbose(
+      `[thread-status] release: key=${this.key} handles=${this.activeHandles} shouldGrace=${graceResult ?? "n/a"}`,
+    );
     if (this.activeHandles > 0) {
       return;
     }
@@ -134,22 +144,26 @@ class ThreadStatusManager {
 
     // If the caller signals that no more dispatches are pending, skip grace
     // and clear the status immediately.
-    if (shouldGrace && !shouldGrace()) {
+    if (graceResult === false) {
+      logVerbose(`[thread-status] shouldGrace skip (immediate clear): key=${this.key}`);
       this.currentText = "";
       void this.pushOnce("").finally(() => this.stopAndDestroy());
       return;
     }
 
     // Grace period: keep pushing graceText, then clear.
+    logVerbose(`[thread-status] grace start: key=${this.key} graceMs=${this.graceMs}`);
     this.currentText = this.graceText;
     this.graceTimer = setTimeout(() => {
       this.graceTimer = null;
+      logVerbose(`[thread-status] grace end (clear): key=${this.key}`);
       this.currentText = "";
       void this.pushOnce("").finally(() => this.stopAndDestroy());
     }, this.graceMs);
   }
 
   private startPushLoop(): void {
+    logVerbose(`[thread-status] push loop start: key=${this.key}`);
     // Immediate first push.
     void this.pushTick();
     this.pushTimer = setInterval(() => void this.pushTick(), this.pushIntervalMs);
@@ -197,6 +211,7 @@ class ThreadStatusManager {
   }
 
   private destroy(): void {
+    logVerbose(`[thread-status] destroy: key=${this.key}`);
     this.cancelGrace();
     this.stopLoop();
     managers.delete(this.key);
