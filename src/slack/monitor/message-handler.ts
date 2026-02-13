@@ -9,39 +9,49 @@ import {
 import { dispatchPreparedSlackMessage } from "./message-handler/dispatch.js";
 import { prepareSlackMessage } from "./message-handler/prepare.js";
 import { createSlackThreadTsResolver } from "./thread-resolution.js";
+import { acquireThreadStatus, isThreadActive, pushCurrentStatus } from "./thread-status.js";
 
 export type SlackMessageHandler = (
   message: SlackMessageEvent,
   opts: { source: "message" | "app_mention"; wasMentioned?: boolean },
 ) => Promise<void>;
 
+export type SlackMessageHandlerResult = {
+  handleMessage: SlackMessageHandler;
+  pushEarlyStatus: (message: SlackMessageEvent) => void;
+};
+
 export function createSlackMessageHandler(params: {
   ctx: SlackMonitorContext;
   account: ResolvedSlackAccount;
-}): SlackMessageHandler {
+}): SlackMessageHandlerResult {
   const { ctx, account } = params;
   const debounceMs = resolveInboundDebounceMs({ cfg: ctx.cfg, channel: "slack" });
   const threadTsResolver = createSlackThreadTsResolver({ client: ctx.app.client });
 
-  const debouncer = createInboundDebouncer<{
+  type DebouncerEntry = {
     message: SlackMessageEvent;
     opts: { source: "message" | "app_mention"; wasMentioned?: boolean };
-  }>({
+  };
+
+  const buildDebouncerKey = (entry: DebouncerEntry): string | null => {
+    const senderId = entry.message.user ?? entry.message.bot_id;
+    if (!senderId) {
+      return null;
+    }
+    const messageTs = entry.message.ts ?? entry.message.event_ts;
+    // If Slack flags a thread reply but omits thread_ts, isolate it from root debouncing.
+    const threadKey = entry.message.thread_ts
+      ? `${entry.message.channel}:${entry.message.thread_ts}`
+      : entry.message.parent_user_id && messageTs
+        ? `${entry.message.channel}:maybe-thread:${messageTs}`
+        : entry.message.channel;
+    return `slack:${ctx.accountId}:${threadKey}:${senderId}`;
+  };
+
+  const debouncer = createInboundDebouncer<DebouncerEntry>({
     debounceMs,
-    buildKey: (entry) => {
-      const senderId = entry.message.user ?? entry.message.bot_id;
-      if (!senderId) {
-        return null;
-      }
-      const messageTs = entry.message.ts ?? entry.message.event_ts;
-      // If Slack flags a thread reply but omits thread_ts, isolate it from root debouncing.
-      const threadKey = entry.message.thread_ts
-        ? `${entry.message.channel}:${entry.message.thread_ts}`
-        : entry.message.parent_user_id && messageTs
-          ? `${entry.message.channel}:maybe-thread:${messageTs}`
-          : entry.message.channel;
-      return `slack:${ctx.accountId}:${threadKey}:${senderId}`;
-    },
+    buildKey: buildDebouncerKey,
     shouldDebounce: (entry) => {
       const text = entry.message.text ?? "";
       if (!text.trim()) {
@@ -89,6 +99,10 @@ export function createSlackMessageHandler(params: {
           prepared.ctxPayload.MessageSidLast = ids[ids.length - 1];
         }
       }
+      const debouncerKey = buildDebouncerKey(last);
+      if (debouncerKey) {
+        prepared.hasPendingMessages = () => debouncer.hasPending(debouncerKey);
+      }
       await dispatchPreparedSlackMessage(prepared);
     },
     onError: (err) => {
@@ -96,7 +110,36 @@ export function createSlackMessageHandler(params: {
     },
   });
 
-  return async (message, opts) => {
+  const pushEarlyStatus = (message: SlackMessageEvent): void => {
+    const threadTs = message.thread_ts ?? message.ts ?? message.event_ts;
+    if (!threadTs) {
+      return;
+    }
+    const key = `${message.channel}:${threadTs}`;
+    if (isThreadActive(key)) {
+      pushCurrentStatus(key);
+    } else {
+      // Create manager early so the "reading" status has restoration capability.
+      // Release immediately — grace period keeps the manager alive for dispatch.
+      const handle = acquireThreadStatus({
+        key,
+        push: (status) =>
+          ctx.setSlackThreadStatus({
+            channelId: message.channel,
+            threadTs,
+            status,
+          }),
+        graceMs: 10_000, // longer grace to cover debounce window
+        onError: (err) => {
+          ctx.runtime.error?.(`pushEarlyStatus failed: ${String(err)}`);
+        },
+      });
+      handle.setStatus("reading");
+      handle.release();
+    }
+  };
+
+  const handleMessage: SlackMessageHandler = async (message, opts) => {
     if (opts.source === "message" && message.type !== "message") {
       return;
     }
@@ -114,4 +157,6 @@ export function createSlackMessageHandler(params: {
     const resolvedMessage = await threadTsResolver.resolve({ message, source: opts.source });
     await debouncer.enqueue({ message: resolvedMessage, opts });
   };
+
+  return { handleMessage, pushEarlyStatus };
 }

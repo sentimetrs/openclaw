@@ -131,7 +131,7 @@ describe("runReplyAgent typing (heartbeat)", () => {
 
     expect(onPartialReply).toHaveBeenCalled();
     expect(typing.startTypingOnText).toHaveBeenCalledWith("hi");
-    expect(typing.startTypingLoop).toHaveBeenCalled();
+    expect(typing.startThinkingLoop).toHaveBeenCalled();
   });
   it("signals typing even without consumer partial handler", async () => {
     runEmbeddedPiAgentMock.mockImplementationOnce(async (params: EmbeddedPiAgentParams) => {

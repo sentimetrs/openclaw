@@ -1,3 +1,4 @@
+import type { StatusPhase } from "../thread-status.js";
 import type { PreparedSlackMessage } from "./types.js";
 import { resolveHumanDelayConfig } from "../../../agents/identity.js";
 import { dispatchInboundMessage } from "../../../auto-reply/dispatch.js";
@@ -12,6 +13,7 @@ import { danger, logVerbose, shouldLogVerbose } from "../../../globals.js";
 import { removeSlackReaction } from "../../actions.js";
 import { resolveSlackThreadTargets } from "../../threading.js";
 import { createSlackReplyDeliveryPlan, deliverReplies } from "../replies.js";
+import { acquireThreadStatus } from "../thread-status.js";
 
 export async function dispatchPreparedSlackMessage(prepared: PreparedSlackMessage) {
   const { ctx, account, message, route } = prepared;
@@ -42,7 +44,7 @@ export async function dispatchPreparedSlackMessage(prepared: PreparedSlackMessag
 
   const messageTs = message.ts ?? message.event_ts;
   const incomingThreadTs = message.thread_ts;
-  let didSetStatus = false;
+  const statusRef = { phase: "thinking" as StatusPhase };
 
   // Shared mutable ref for "replyToMode=first". Both tool + auto-reply flows
   // mark this to ensure only the first reply is threaded.
@@ -55,25 +57,39 @@ export async function dispatchPreparedSlackMessage(prepared: PreparedSlackMessag
   });
 
   const typingTarget = statusThreadTs ? `${message.channel}/${statusThreadTs}` : message.channel;
+
+  const statusHandle = statusThreadTs
+    ? acquireThreadStatus({
+        key: `${message.channel}:${statusThreadTs}`,
+        push: (status) =>
+          ctx.setSlackThreadStatus({
+            channelId: message.channel,
+            threadTs: statusThreadTs,
+            status,
+          }),
+        shouldGrace: prepared.hasPendingMessages,
+        onError: (err) => {
+          logTypingFailure({
+            log: (message) => runtime.error?.(danger(message)),
+            channel: "slack",
+            target: typingTarget,
+            error: err,
+          });
+        },
+      })
+    : null;
+
   const typingCallbacks = createTypingCallbacks({
     start: async () => {
-      didSetStatus = true;
-      await ctx.setSlackThreadStatus({
-        channelId: message.channel,
-        threadTs: statusThreadTs,
-        status: "is typing...",
-      });
+      statusHandle?.setStatus(statusRef.phase);
     },
     stop: async () => {
-      if (!didSetStatus) {
-        return;
+      // Show "reading messages..." before release if there are pending messages.
+      // Done here (not in deliver) to avoid flash between chunks of the same run.
+      if (prepared.hasPendingMessages?.()) {
+        statusHandle?.setStatus("reading");
       }
-      didSetStatus = false;
-      await ctx.setSlackThreadStatus({
-        channelId: message.channel,
-        threadTs: statusThreadTs,
-        status: "",
-      });
+      statusHandle?.release();
     },
     onStartError: (err) => {
       logTypingFailure({
@@ -106,6 +122,9 @@ export async function dispatchPreparedSlackMessage(prepared: PreparedSlackMessag
     ...prefixOptions,
     humanDelay: resolveHumanDelayConfig(cfg, route.agentId),
     deliver: async (payload) => {
+      // Pause push loop BEFORE sending so Slack can auto-clear the status.
+      // Next setStatus() call (e.g. from a followup) will restart it.
+      statusHandle?.pause();
       const replyThreadTs = replyPlan.nextThreadTs();
       await deliverReplies({
         replies: [payload],
@@ -124,6 +143,7 @@ export async function dispatchPreparedSlackMessage(prepared: PreparedSlackMessag
     },
     onReplyStart: typingCallbacks.onReplyStart,
     onIdle: typingCallbacks.onIdle,
+    onCleanup: typingCallbacks.onCleanup,
   });
 
   const { queuedFinal, counts } = await dispatchInboundMessage({
@@ -139,6 +159,10 @@ export async function dispatchPreparedSlackMessage(prepared: PreparedSlackMessag
           ? !account.config.blockStreaming
           : undefined,
       onModelSelected,
+      onPhaseChange: (phase) => {
+        statusRef.phase = phase === "thinking" ? "thinking" : "reasoning";
+        statusHandle?.setStatus(statusRef.phase);
+      },
     },
   });
   markDispatchIdle();

@@ -1,4 +1,5 @@
 import type { ResolvedSlackAccount } from "../accounts.js";
+import type { SlackMessageEvent } from "../types.js";
 import type { SlackMonitorContext } from "./context.js";
 import type { SlackMessageHandler } from "./message-handler.js";
 import { registerSlackChannelEvents } from "./events/channels.js";
@@ -11,10 +12,12 @@ export function registerSlackMonitorEvents(params: {
   ctx: SlackMonitorContext;
   account: ResolvedSlackAccount;
   handleSlackMessage: SlackMessageHandler;
+  pushEarlyStatus: (message: SlackMessageEvent) => void;
 }) {
   registerSlackMessageEvents({
     ctx: params.ctx,
     handleSlackMessage: params.handleSlackMessage,
+    pushEarlyStatus: params.pushEarlyStatus,
   });
   registerSlackReactionEvents({ ctx: params.ctx });
   registerSlackMemberEvents({ ctx: params.ctx });

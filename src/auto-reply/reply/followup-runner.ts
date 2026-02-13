@@ -16,6 +16,7 @@ import { defaultRuntime } from "../../runtime.js";
 import { stripHeartbeatToken } from "../heartbeat.js";
 import { isSilentReplyText, SILENT_REPLY_TOKEN } from "../tokens.js";
 import { buildThreadingToolContext } from "./agent-runner-utils.js";
+import { getFollowupQueueDepth } from "./queue.js";
 import {
   applyReplyThreading,
   filterMessagingToolDuplicates,
@@ -37,6 +38,7 @@ export function createFollowupRunner(params: {
   storePath?: string;
   defaultModel: string;
   agentCfgContextTokens?: number;
+  queueKey: string;
 }): (queued: FollowupRun) => Promise<void> {
   const {
     opts,
@@ -114,6 +116,8 @@ export function createFollowupRunner(params: {
 
   return async (queued: FollowupRun) => {
     try {
+      typing.resetForFollowup();
+      await typingSignals.signalRunStart();
       const runId = crypto.randomUUID();
       if (queued.run.sessionKey) {
         registerAgentRunContext(runId, {
@@ -293,7 +297,11 @@ export function createFollowupRunner(params: {
 
       await sendFollowupPayloads(finalPayloads, queued);
     } finally {
-      typing.markRunComplete();
+      if (getFollowupQueueDepth(params.queueKey) > 0) {
+        typing.transitionToFollowup();
+      } else {
+        typing.markRunComplete();
+      }
     }
   };
 }

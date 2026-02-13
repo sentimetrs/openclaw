@@ -203,9 +203,9 @@ export async function monitorSlackProvider(opts: MonitorSlackOpts = {}) {
     removeAckAfterReply,
   });
 
-  const handleSlackMessage = createSlackMessageHandler({ ctx, account });
+  const { handleMessage, pushEarlyStatus } = createSlackMessageHandler({ ctx, account });
 
-  registerSlackMonitorEvents({ ctx, account, handleSlackMessage });
+  registerSlackMonitorEvents({ ctx, account, handleSlackMessage: handleMessage, pushEarlyStatus });
   registerSlackMonitorSlashCommands({ ctx, account });
   if (slackMode === "http" && slackHttpHandler) {
     unregisterHttpHandler = registerSlackHttpHandler({
