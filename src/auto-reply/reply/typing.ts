@@ -259,6 +259,20 @@ export function createTypingController(params: {
       // Immediate status update.
       void triggerTyping();
     }
+    // Restart the typing indicator timer with a short interval.
+    // External systems (e.g. Slack) may clear the status with a delay
+    // (1-3s) after the bot posts a message. A short interval ensures
+    // rapid re-set so the user sees continuity between main run and followup.
+    // resetForFollowup() clears this timer before the followup starts.
+    if (onReplyStart && typingIntervalMs > 0) {
+      if (typingTimer) {
+        clearInterval(typingTimer);
+      }
+      const transitionIntervalMs = Math.min(typingIntervalMs, 2000);
+      typingTimer = setInterval(() => {
+        void triggerTyping();
+      }, transitionIntervalMs);
+    }
   };
 
   const resetForFollowup = () => {
