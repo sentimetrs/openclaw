@@ -46,7 +46,7 @@ export function acquireThreadStatus(params: {
   const {
     key,
     push,
-    pushIntervalMs = 100,
+    pushIntervalMs = 10_000,
     graceMs = 5_000,
     graceText = "is thinking...",
     shouldGrace,
@@ -102,12 +102,18 @@ class ThreadStatusManager {
         if (released) {
           return;
         }
-        if (text !== this.currentText) {
+        const changed = text !== this.currentText;
+        if (changed) {
           logVerbose(`[thread-status] setStatus: key=${this.key} text="${text}"`);
         }
         this.currentText = text;
         if (text && !this.pushTimer) {
           this.startPushLoop();
+        } else if (changed && text && this.pushTimer) {
+          // Push immediately on status change so the user sees the
+          // transition (e.g. thinking→typing) without waiting for
+          // the next interval tick.
+          void this.pushTick();
         }
       },
       release: () => {
