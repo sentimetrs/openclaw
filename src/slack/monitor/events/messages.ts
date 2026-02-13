@@ -14,8 +14,9 @@ import { resolveSlackChannelLabel } from "../channel-config.js";
 export function registerSlackMessageEvents(params: {
   ctx: SlackMonitorContext;
   handleSlackMessage: SlackMessageHandler;
+  pushEarlyStatus: (message: SlackMessageEvent) => void;
 }) {
-  const { ctx, handleSlackMessage } = params;
+  const { ctx, handleSlackMessage, pushEarlyStatus } = params;
 
   ctx.app.event("message", async ({ event, body }: SlackEventMiddlewareArgs<"message">) => {
     try {
@@ -124,6 +125,7 @@ export function registerSlackMessageEvents(params: {
       }
 
       const mention = event as SlackAppMentionEvent;
+      pushEarlyStatus(mention as unknown as SlackMessageEvent);
       await handleSlackMessage(mention as unknown as SlackMessageEvent, {
         source: "app_mention",
         wasMentioned: true,

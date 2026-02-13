@@ -9,16 +9,22 @@ import {
 import { dispatchPreparedSlackMessage } from "./message-handler/dispatch.js";
 import { prepareSlackMessage } from "./message-handler/prepare.js";
 import { createSlackThreadTsResolver } from "./thread-resolution.js";
+import { isThreadActive, pushCurrentStatus } from "./thread-status.js";
 
 export type SlackMessageHandler = (
   message: SlackMessageEvent,
   opts: { source: "message" | "app_mention"; wasMentioned?: boolean },
 ) => Promise<void>;
 
+export type SlackMessageHandlerResult = {
+  handleMessage: SlackMessageHandler;
+  pushEarlyStatus: (message: SlackMessageEvent) => void;
+};
+
 export function createSlackMessageHandler(params: {
   ctx: SlackMonitorContext;
   account: ResolvedSlackAccount;
-}): SlackMessageHandler {
+}): SlackMessageHandlerResult {
   const { ctx, account } = params;
   const debounceMs = resolveInboundDebounceMs({ cfg: ctx.cfg, channel: "slack" });
   const threadTsResolver = createSlackThreadTsResolver({ client: ctx.app.client });
@@ -104,7 +110,28 @@ export function createSlackMessageHandler(params: {
     },
   });
 
-  return async (message, opts) => {
+  const pushEarlyStatus = (message: SlackMessageEvent): void => {
+    const threadTs = message.thread_ts ?? message.ts ?? message.event_ts;
+    if (!threadTs) {
+      return;
+    }
+    const key = `${message.channel}:${threadTs}`;
+    if (isThreadActive(key)) {
+      pushCurrentStatus(key);
+    } else {
+      ctx
+        .setSlackThreadStatus({
+          channelId: message.channel,
+          threadTs,
+          status: "reading messages...",
+        })
+        .catch((err) => {
+          ctx.runtime.error?.(`pushEarlyStatus failed: ${String(err)}`);
+        });
+    }
+  };
+
+  const handleMessage: SlackMessageHandler = async (message, opts) => {
     if (opts.source === "message" && message.type !== "message") {
       return;
     }
@@ -122,4 +149,6 @@ export function createSlackMessageHandler(params: {
     const resolvedMessage = await threadTsResolver.resolve({ message, source: opts.source });
     await debouncer.enqueue({ message: resolvedMessage, opts });
   };
+
+  return { handleMessage, pushEarlyStatus };
 }
