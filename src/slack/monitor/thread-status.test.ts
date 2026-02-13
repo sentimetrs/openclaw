@@ -7,7 +7,7 @@ describe("ThreadStatusManager", () => {
     _resetAllManagers();
   });
 
-  it("single handle lifecycle: acquire → setStatus → release → grace → push empty → destroy", async () => {
+  it("single handle lifecycle: acquire → setStatus → release → grace → stop (no empty push)", async () => {
     vi.useFakeTimers();
     const push = vi.fn().mockResolvedValue(undefined);
 
@@ -34,10 +34,9 @@ describe("ThreadStatusManager", () => {
     await vi.advanceTimersByTimeAsync(100);
     expect(push).toHaveBeenCalledWith("is thinking...");
 
-    // After grace period → pushes empty string.
+    // After grace period → loop stops, no empty push (Slack auto-clears).
     push.mockClear();
     await vi.advanceTimersByTimeAsync(5_000);
-    expect(push).toHaveBeenCalledWith("");
 
     // Loop stopped — no more pushes.
     push.mockClear();
@@ -74,16 +73,18 @@ describe("ThreadStatusManager", () => {
     });
     h2.setStatus("is thinking...");
 
-    // Push loop continues seamlessly — no empty push.
+    // Push loop continues seamlessly.
     await vi.advanceTimersByTimeAsync(100);
     expect(push).toHaveBeenCalledWith("is thinking...");
-    expect(push).not.toHaveBeenCalledWith("");
 
-    // Release h2 → grace again.
+    // Release h2 → grace, then stop.
     h2.release();
     push.mockClear();
-    await vi.advanceTimersByTimeAsync(5_000);
-    expect(push).toHaveBeenCalledWith("");
+    await vi.advanceTimersByTimeAsync(5_100);
+    // After grace — no more pushes.
+    push.mockClear();
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(push).not.toHaveBeenCalled();
   });
 
   it("lazy start: acquire → release without setStatus → no push loop created", async () => {
@@ -120,10 +121,12 @@ describe("ThreadStatusManager", () => {
 
     handle.release();
     handle.release(); // Second release — should be a no-op.
-    await vi.advanceTimersByTimeAsync(5_000);
+    await vi.advanceTimersByTimeAsync(5_100);
 
-    // Should still work normally — single grace period → empty push.
-    expect(push).toHaveBeenCalledWith("");
+    // Should still work normally — grace period then stop.
+    push.mockClear();
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(push).not.toHaveBeenCalled();
   });
 
   it("in-flight guard: slow push → tick skipped", async () => {
@@ -186,10 +189,12 @@ describe("ThreadStatusManager", () => {
     await vi.advanceTimersByTimeAsync(100);
     expect(push).toHaveBeenCalledWith("hold on...");
 
-    // After grace → push empty.
+    // After grace → stop (no empty push).
     push.mockClear();
-    await vi.advanceTimersByTimeAsync(5_000);
-    expect(push).toHaveBeenCalledWith("");
+    await vi.advanceTimersByTimeAsync(5_100);
+    push.mockClear();
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(push).not.toHaveBeenCalled();
   });
 
   it("self-cleanup: after destroy, new acquire creates a fresh manager", async () => {
@@ -254,7 +259,7 @@ describe("ThreadStatusManager", () => {
     await vi.advanceTimersByTimeAsync(200);
   });
 
-  it("shouldGrace false: skips grace period and clears immediately", async () => {
+  it("shouldGrace false: stops immediately without pushing empty", async () => {
     vi.useFakeTimers();
     const push = vi.fn().mockResolvedValue(undefined);
 
@@ -270,11 +275,10 @@ describe("ThreadStatusManager", () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(push).toHaveBeenCalledWith("is thinking...");
 
-    // Release with shouldGrace=false → no grace, immediate clear.
+    // Release with shouldGrace=false → stop immediately, no empty push.
     push.mockClear();
     handle.release();
     await vi.advanceTimersByTimeAsync(0);
-    expect(push).toHaveBeenCalledWith("");
 
     // No further pushes — loop stopped.
     push.mockClear();
@@ -302,12 +306,13 @@ describe("ThreadStatusManager", () => {
     handle.release();
     await vi.advanceTimersByTimeAsync(100);
     expect(push).toHaveBeenCalledWith("is thinking...");
-    expect(push).not.toHaveBeenCalledWith("");
 
-    // After grace period → clear.
+    // After grace period → stop.
     push.mockClear();
-    await vi.advanceTimersByTimeAsync(5_000);
-    expect(push).toHaveBeenCalledWith("");
+    await vi.advanceTimersByTimeAsync(5_100);
+    push.mockClear();
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(push).not.toHaveBeenCalled();
   });
 
   it("shouldGrace dynamic: grace when pending, no grace when empty", async () => {
@@ -345,9 +350,8 @@ describe("ThreadStatusManager", () => {
     hasPending = false;
     push.mockClear();
     h2.release();
-    // shouldGrace returns false → immediate clear.
+    // shouldGrace returns false → immediate stop.
     await vi.advanceTimersByTimeAsync(0);
-    expect(push).toHaveBeenCalledWith("");
 
     // No more pushes.
     push.mockClear();
@@ -376,5 +380,30 @@ describe("ThreadStatusManager", () => {
 
     handle.release();
     await vi.advanceTimersByTimeAsync(200);
+  });
+
+  it("refresh: forces immediate re-push of current text", async () => {
+    vi.useFakeTimers();
+    const push = vi.fn().mockResolvedValue(undefined);
+
+    const handle = acquireThreadStatus({
+      key: "C1:T1",
+      push,
+      pushIntervalMs: 10_000,
+      graceMs: 5_000,
+    });
+
+    handle.setStatus("is thinking...");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(push).toHaveBeenCalledTimes(1);
+
+    // refresh triggers an immediate push without waiting for interval.
+    push.mockClear();
+    handle.refresh();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(push).toHaveBeenCalledWith("is thinking...");
+
+    handle.release();
+    await vi.advanceTimersByTimeAsync(5_100);
   });
 });

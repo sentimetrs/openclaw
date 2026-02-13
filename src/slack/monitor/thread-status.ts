@@ -157,23 +157,22 @@ class ThreadStatusManager {
       return;
     }
 
-    // If the caller signals that no more dispatches are pending, skip grace
-    // and clear the status immediately.
+    // If the caller signals that no more dispatches are pending, stop immediately.
+    // Slack auto-clears the status when the bot posts a message or after 2 min.
     if (graceResult === false) {
-      logVerbose(`[thread-status] shouldGrace skip (immediate clear): key=${this.key}`);
-      this.currentText = "";
-      void this.pushOnce("").finally(() => this.stopAndDestroy());
+      logVerbose(`[thread-status] no pending — stop immediately: key=${this.key}`);
+      this.stopAndDestroy();
       return;
     }
 
-    // Grace period: keep pushing graceText, then clear.
+    // Grace period: keep pushing graceText so the status stays visible
+    // between sequential dispatches, then stop (Slack will auto-clear).
     logVerbose(`[thread-status] grace start: key=${this.key} graceMs=${this.graceMs}`);
     this.currentText = this.graceText;
     this.graceTimer = setTimeout(() => {
       this.graceTimer = null;
-      logVerbose(`[thread-status] grace end (clear): key=${this.key}`);
-      this.currentText = "";
-      void this.pushOnce("").finally(() => this.stopAndDestroy());
+      logVerbose(`[thread-status] grace end: key=${this.key}`);
+      this.stopAndDestroy();
     }, this.graceMs);
   }
 
@@ -195,14 +194,6 @@ class ThreadStatusManager {
       this.onError?.(err);
     } finally {
       this.pushing = false;
-    }
-  }
-
-  private async pushOnce(text: string): Promise<void> {
-    try {
-      await this.pushFn(text);
-    } catch (err) {
-      this.onError?.(err);
     }
   }
 
